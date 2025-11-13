@@ -18,6 +18,7 @@ import {
   GetAllGroupsResponse,
   GroupInfoResponse,
 } from "zca-js";
+// THÊM MỚI: Import CookieJar từ thư viện tough-cookie (Sửa lỗi ts(2724))
 import sharp from "sharp";
 
 // Import Emitter toàn cục
@@ -41,6 +42,16 @@ export type ThreadInfo = {
   name: string; // displayName (bạn bè) hoặc name (nhóm)
   avatar: string; // avatar (cả hai)
   type: 0 | 1; // 0 = User, 1 = Group
+};
+
+/**
+ * THÊM MỚI: Định nghĩa kiểu dữ liệu cho Credentials/Session
+ */
+type ZaloCredentials = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cookie: any; // SỬA ĐỔI: Dùng 'any' để giải quyết xung đột kiểu (lỗi ts(2741) và ts(2345))
+  imei: string;
+  userAgent: string;
 };
 
 /**
@@ -94,9 +105,9 @@ export class ZaloSingletonService {
     });
 
     this.zalo = new Zalo({
-      imageMetadataGetter, // Cung cấp hàm lấy metadata ảnh
-      selfListen: false, // Không lắng nghe tin nhắn của chính mình
-      logging: true, // Bật log của thư viện zca-js
+      imageMetadataGetter,
+      selfListen: false,
+      logging: true,
     });
   }
 
@@ -127,7 +138,8 @@ export class ZaloSingletonService {
 
     if (this.loginState === "LOGGED_IN") {
       console.warn("[Service] Đã đăng nhập rồi.");
-      globalZaloEmitter.emit(ZALO_EVENTS.LOGIN_SUCCESS); // Gửi lại sự kiện
+      globalZaloEmitter.emit(ZALO_EVENTS.LOGIN_SUCCESS);
+      this.emitSessionToken(); // THÊM MỚI: Gửi lại session nếu đã đăng nhập
       return;
     }
 
@@ -166,34 +178,27 @@ export class ZaloSingletonService {
             base64Image = qrDataOrPath.data.image; // Đây đã là data URI
           }
 
-          // Xử lý kết quả
           if (base64Image) {
-            // --- SỬA LỖI: Đảm bảo Data URI hợp lệ ---
-            // Kiểm tra xem chuỗi đã có tiền tố 'data:image' chưa
             if (!base64Image.startsWith("data:image")) {
               console.log(
                 "[Service] Sửa lỗi: Tự động thêm tiền tố 'data:image/png;base64,' vào QR code.",
               );
               base64Image = `data:image/png;base64,${base64Image}`;
             }
-            // --- Kết thúc sửa lỗi ---
 
             console.log(
               `[Service DEBUG] 3/6: Đã có base64. Đang emit... (data: ${base64Image.substring(
                 0,
                 50,
               )}...)`,
-            ); // <-- DEBUG LOG 3
+            );
             globalZaloEmitter.emit(ZALO_EVENTS.QR_GENERATED, base64Image);
           } else {
-            // SỬA LỖI: Bỏ qua các sự kiện callback không phải là QR image
-            // (ví dụ: { type: 1, data: null } là sự kiện 'expired' hoặc 'scanned')
-            // Đây không phải là lỗi, chỉ là thông báo từ thư viện.
             console.warn(
               "[Service WARN] Nhận được sự kiện callback không phải QR image (ví dụ: expired, scanned). Bỏ qua.",
               qrDataOrPath,
             );
-            return; // Quan trọng: Không làm gì cả và không báo lỗi
+            return;
           }
         } catch (error: unknown) {
           console.error("[Service] Lỗi nghiêm trọng khi xử lý QR:", error);
@@ -207,7 +212,7 @@ export class ZaloSingletonService {
       })
       .then((api) => {
         // Promise này resolve khi người dùng quét QR thành công
-        console.log("[Service] Đăng nhập thành công!");
+        console.log("[Service] Đăng nhập QR thành công!");
         this.api = api; // Gán API đã đăng nhập
         this.loginState = "LOGGED_IN";
 
@@ -217,14 +222,77 @@ export class ZaloSingletonService {
         // Khởi động listener
         this.api.listener.start();
         this.setupListeners();
+
+        // THÊM MỚI: Phát (emit) session token cho UI
+        this.emitSessionToken();
       })
       .catch((err) => {
-        console.error("[Service] Lỗi đăng nhập:", err);
+        console.error("[Service] Lỗi đăng nhập QR:", err);
         this.loginState = "ERROR";
         this.loginError = err.message || "Lỗi không xác định";
         globalZaloEmitter.emit(ZALO_EVENTS.LOGIN_FAILURE, this.loginError);
         globalZaloEmitter.emit(ZALO_EVENTS.STATUS_UPDATE, this.getStatus());
       });
+  }
+
+  /**
+   * THÊM MỚI: Phương thức đăng nhập bằng Session Token
+   * @param tokenString Chuỗi JSON chứa credentials
+   */
+  public async startLoginWithToken(tokenString: string): Promise<void> {
+    if (this.loginState === "LOGGING_IN") {
+      throw new Error("Quá trình đăng nhập đã đang chạy.");
+    }
+    if (this.loginState === "LOGGED_IN") {
+      throw new Error("Đã đăng nhập rồi.");
+    }
+
+    console.log("[Service] Bắt đầu quá trình đăng nhập bằng Token...");
+    this.loginState = "LOGGING_IN";
+    this.loginError = null;
+    globalZaloEmitter.emit(ZALO_EVENTS.STATUS_UPDATE, this.getStatus());
+
+    try {
+      // 1. Parse chuỗi JSON
+      const credentials = JSON.parse(tokenString) as ZaloCredentials;
+
+      // 2. Xác thực cấu trúc cơ bản
+      if (!credentials.cookie || !credentials.imei || !credentials.userAgent) {
+        throw new Error(
+          "Token không hợp lệ (thiếu cookie, imei, hoặc userAgent).",
+        );
+      }
+
+      console.log("[Service] Đang gọi zalo.login() với token...");
+      // 3. Gọi API A (login)
+      this.api = await this.zalo.login(credentials);
+
+      // 4. Thành công
+      console.log("[Service] Đăng nhập bằng Token thành công!");
+      this.loginState = "LOGGED_IN";
+
+      globalZaloEmitter.emit(ZALO_EVENTS.LOGIN_SUCCESS);
+      globalZaloEmitter.emit(ZALO_EVENTS.STATUS_UPDATE, this.getStatus());
+
+      // Khởi động listener
+      this.api.listener.start();
+      this.setupListeners();
+
+      // 5. Phát (emit) lại session token (để đồng bộ UI)
+      this.emitSessionToken();
+    } catch (error: unknown) {
+      console.error("[Service] Lỗi đăng nhập bằng Token:", error);
+      this.loginState = "ERROR";
+      const errorMsg =
+        error instanceof Error
+          ? error.message
+          : "Token không hợp lệ hoặc đã hết hạn";
+      this.loginError = errorMsg;
+      globalZaloEmitter.emit(ZALO_EVENTS.LOGIN_FAILURE, this.loginError);
+      globalZaloEmitter.emit(ZALO_EVENTS.STATUS_UPDATE, this.getStatus());
+      // Ném lỗi về cho Action
+      throw new Error(errorMsg);
+    }
   }
 
   // 6. Thiết lập các listener nền
@@ -270,18 +338,62 @@ export class ZaloSingletonService {
         console.error('[Service] Lỗi xử lý listener "message":', e);
       }
     });
+  }
 
-    // (Bạn có thể thêm các listener khác ở đây, ví dụ: 'reaction', 'undo', 'group_event')
-    // this.api.listener.on('reaction', (reaction) => {
-    //   console.log('[Service] React mới:', reaction);
-    // });
+  /**
+   * THÊM MỚI: Hàm trợ giúp nội bộ để lấy và phát session token
+   */
+  private emitSessionToken(): void {
+    if (this.loginState !== "LOGGED_IN" || !this.api) {
+      console.warn("[Service] Không thể emit session: chưa đăng nhập.");
+      return;
+    }
+    try {
+      // 1. Gọi API C (getContext)
+      const context = this.api.getContext();
+      // 2. Trích xuất
+      const session: ZaloCredentials = {
+        cookie: context.cookie,
+        imei: context.imei,
+        userAgent: context.userAgent,
+      };
+      // 3. Tuần tự hóa
+      const tokenString = JSON.stringify(session);
+      // 4. Phát sự kiện
+      console.log("[Service] Đang phát sự kiện SESSION_GENERATED cho UI.");
+      globalZaloEmitter.emit(ZALO_EVENTS.SESSION_GENERATED, tokenString);
+    } catch (e) {
+      console.error("[Service] Lỗi khi emit session token:", e);
+    }
+  }
+
+  /**
+   * THÊM MỚI: Phương thức nghiệp vụ: Lấy Session Token (để copy)
+   */
+  public async getSessionToken(): Promise<string> {
+    if (this.loginState !== "LOGGED_IN" || !this.api) {
+      console.warn("[Service] getSessionToken thất bại: Chưa đăng nhập.");
+      throw new Error("Chưa đăng nhập");
+    }
+    try {
+      const context = this.api.getContext();
+      const session = {
+        cookie: context.cookie,
+        imei: context.imei,
+        userAgent: context.userAgent,
+      };
+      return JSON.stringify(session);
+    } catch (error) {
+      console.error("[Service] Lỗi getSessionToken:", error);
+      throw error;
+    }
   }
 
   // 7. Phương thức nghiệp vụ: Gửi tin nhắn
   public async sendMessage(
     content: string,
     threadId: string,
-    type: 0 | 1, // BẮT BUỘC THÊM TYPE
+    type: 0 | 1,
   ): Promise<{ success: boolean; error?: string }> {
     if (this.loginState !== "LOGGED_IN" || !this.api) {
       console.warn("[Service] sendMessage thất bại: Chưa đăng nhập.");
@@ -382,7 +494,7 @@ export class ZaloSingletonService {
         // Thêm logic debug
         // Hàm trợ giúp delay
         const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
-        const CHUNK_SIZE = 20; // Đặt kích thước lô an toàn
+        const CHUNK_SIZE = 20;
         const totalChunks = Math.ceil(groupIds.length / CHUNK_SIZE);
 
         console.log(
@@ -393,9 +505,9 @@ export class ZaloSingletonService {
         for (let i = 0; i < groupIds.length; i += CHUNK_SIZE) {
           const chunk = groupIds.slice(i, i + CHUNK_SIZE);
           console.log(
-            `[Service Debug] Đang xử lý lô ${i / CHUNK_SIZE + 1}/${Math.ceil(
-              groupIds.length / CHUNK_SIZE,
-            )} (IDs: ${chunk.join(", ")})`,
+            `[Service Debug] Đang xử lý lô ${
+              i / CHUNK_SIZE + 1
+            }/${totalChunks} (IDs: ${chunk.join(", ")})`,
           );
 
           // Step 3.2: Lấy thông tin chi tiết nhóm (theo lô)
@@ -410,15 +522,14 @@ export class ZaloSingletonService {
           // SỬA LỖI TS(2349): gridInfoMap là Object, không phải Map
           Object.entries(groupInfos.gridInfoMap).forEach(([groupId, group]) => {
             mergedThreads.push({
-              id: groupId, // Key của Map chính là groupId
+              id: groupId,
               name: group.name,
               avatar: group.avt,
-              type: 1, // 1 = Group
+              type: 1,
             });
           });
 
-          // Thêm độ trễ (delay) 200ms để tránh rate-limit
-          await new Promise((res) => setTimeout(res, 200));
+          await delay(200);
         }
         console.log("[Service Debug] Hoàn tất xử lý tất cả các lô.");
         // --- Kết thúc Sửa lỗi Batching ---

@@ -9,7 +9,9 @@
 import { useState, useEffect, useRef, FormEvent, ChangeEvent } from "react";
 // CẬP NHẬT: Import thêm các actions mới
 import {
-  startLoginAction,
+  startLoginQRAction, // Đổi tên
+  startLoginWithTokenAction, // Thêm mới
+  getSessionTokenAction, // Thêm mới
   sendMessageAction,
   getAccountInfoAction,
   getThreadsAction,
@@ -23,6 +25,7 @@ const ZALO_EVENTS = {
   LOGIN_FAILURE: "login_failure",
   NEW_MESSAGE: "new_message",
   STATUS_UPDATE: "status_update",
+  SESSION_GENERATED: "session_generated", // Thêm mới
 };
 
 // Định nghĩa kiểu dữ liệu cho tin nhắn (để hiển thị)
@@ -50,12 +53,68 @@ export type ThreadInfo = {
   type: 0 | 1; // 0 = User, 1 = Group
 };
 
+/**
+ * THÊM MỚI: Component Modal để hiển thị Token
+ */
+function TokenModal({
+  token,
+  onClose,
+}: {
+  token: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="relative w-full max-w-lg rounded-lg bg-gray-800 p-6 shadow-xl">
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-red-600 text-white hover:bg-red-700"
+          aria-label="Đóng modal"
+        >
+          &times;
+        </button>
+        <h3 className="mb-4 text-xl font-semibold text-white">
+          Session Token (JSON)
+        </h3>
+        <p className="mb-3 text-sm text-gray-400">
+          Đây là &quot;Token&quot; (Credentials) của bạn. Hãy sao chép và lưu
+          trữ nó ở một nơi an toàn (như trình quản lý mật khẩu). Đừng chia sẻ nó
+          với bất kỳ ai.
+        </p>
+        <textarea
+          readOnly
+          value={token}
+          className="h-40 w-full rounded-lg border border-gray-600 bg-gray-900 p-3 font-mono text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          // Tự động chọn text khi click
+          onFocus={(e) => e.target.select()}
+        />
+        <button
+          onClick={onClose}
+          className="mt-4 w-full rounded-lg bg-gray-600 py-2 px-4 font-bold text-white transition duration-200 hover:bg-gray-700"
+        >
+          Đã hiểu và Đóng
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function BotControlPanel() {
   // Trạng thái chung
   type LoginState = "IDLE" | "LOGGING_IN" | "LOGGED_IN" | "ERROR";
   const [loginState, setLoginState] = useState<LoginState>("IDLE");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
+
+  // --- CẬP NHẬT: Thêm các State mới cho luồng Token ---
+  const [loginMethod, setLoginMethod] = useState<"qr" | "token">("qr");
+  const [tokenInput, setTokenInput] = useState<string>("");
+  const [sessionTokenForCopy, setSessionTokenForCopy] = useState<string | null>(
+    null,
+  );
+  const [showTokenModal, setShowTokenModal] = useState<boolean>(false);
+  const [isCopying, setIsCopying] = useState<boolean>(false);
+  // --- Kết thúc cập nhật ---
 
   // --- CẬP NHẬT: Form state & Data state ---
   const [messageContent, setMessageContent] = useState("");
@@ -185,6 +244,8 @@ export default function BotControlPanel() {
           setLoginState("LOGGED_IN");
           setQrCode(null);
           setErrorMessage(null);
+          setIsSending(false); // THÊM MỚI: Kích hoạt lại nút (cho cả Token login)
+          setTokenInput(""); // THÊM MỚI: Xóa token input sau khi thành công
 
           // --- THÊM MỚI: Tải dữ liệu khi đăng nhập thành công ---
           console.log(
@@ -207,9 +268,9 @@ export default function BotControlPanel() {
             // Sắp xếp: Nhóm (1) lên trước, Bạn bè (0) xuống dưới, rồi sắp xếp theo tên
             threadList.sort((a, b) => {
               if (a.type !== b.type) {
-                return b.type - a.type; // 1 (Group) > 0 (User)
+                return b.type - a.type;
               }
-              return a.name.localeCompare(b.name); // Sắp xếp theo tên
+              return a.name.localeCompare(b.name);
             });
 
             setThreads(threadList);
@@ -234,6 +295,7 @@ export default function BotControlPanel() {
           setLoginState("ERROR");
           setErrorMessage(errorMsg);
           setQrCode(null);
+          setIsSending(false); // THÊM MỚI: Kích hoạt lại nút (cho cả Token login)
           break;
         case ZALO_EVENTS.NEW_MESSAGE:
           // SỬA LỖI: Kiểm tra 'data' có phải là ZaloMessage không
@@ -255,11 +317,19 @@ export default function BotControlPanel() {
             );
           }
           break;
+
+        // THÊM MỚI: Xử lý khi nhận được Session Token
+        case ZALO_EVENTS.SESSION_GENERATED:
+          if (data && typeof data === "string") {
+            console.log("[UI] Đã nhận và lưu session token vào state.");
+            setSessionTokenForCopy(data);
+          }
+          break;
       }
     };
 
-    // Lắng nghe sự kiện cập nhật trạng thái
-    // LỖI TYPO: Sửa ZALI_EVENTS -> ZALO_EVENTS
+    // --- Cập nhật các AddEventListener ---
+    // (Không đổi logic, chỉ thêm listener mới)
     eventSource.addEventListener(ZALO_EVENTS.STATUS_UPDATE, (event) => {
       // DEBUG: Log dữ liệu thô
       console.log("[SSE - STATUS_UPDATE] Nhận được dữ liệu thô:", event.data);
@@ -301,6 +371,13 @@ export default function BotControlPanel() {
       handleSSEMessage(ZALO_EVENTS.NEW_MESSAGE, data);
     });
 
+    // THÊM MỚI: Listener cho Session Token
+    eventSource.addEventListener(ZALO_EVENTS.SESSION_GENERATED, (event) => {
+      console.log("[SSE - SESSION_GENERATED] Nhận được dữ liệu thô (token)...");
+      const data = event.data; // Đây là chuỗi JSON (dạng string)
+      handleSSEMessage(ZALO_EVENTS.SESSION_GENERATED, data);
+    });
+
     // Dọn dẹp khi component unmount
     return () => {
       console.log("Đóng kết nối SSE.");
@@ -312,13 +389,89 @@ export default function BotControlPanel() {
   /**
    * Xử lý gọi Server Action để bắt đầu đăng nhập
    */
-  const handleStartLogin = () => {
+  const handleStartLoginQR = () => {
     setLoginState("LOGGING_IN");
     setErrorMessage(null);
     setQrCode(null);
-    startLoginAction(); // Gọi Server Action (không cần await)
+    startLoginQRAction(); // Gọi Server Action (đã đổi tên)
   };
 
+  /**
+   * THÊM MỚI: Xử lý gọi Server Action để đăng nhập bằng Token
+   */
+  const handleStartLoginWithToken = async () => {
+    if (isSending || !tokenInput) {
+      if (!tokenInput) setErrorMessage("Vui lòng dán session token vào.");
+      return;
+    }
+    setLoginState("LOGGING_IN");
+    setErrorMessage(null);
+    setQrCode(null);
+    setIsSending(true); // Vô hiệu hóa nút
+    try {
+      // Gọi Action mới
+      await startLoginWithTokenAction(tokenInput);
+      // Thành công sẽ được xử lý bởi SSE (LOGIN_SUCCESS)
+    } catch (error: unknown) {
+      // Thất bại sẽ được xử lý bởi Action (throw) và SSE (LOGIN_FAILURE)
+      const errorMsg =
+        error instanceof Error ? error.message : "Lỗi không xác định";
+      setLoginState("ERROR");
+      setErrorMessage(`Lỗi đăng nhập token: ${errorMsg}`);
+      setIsSending(false); // Kích hoạt lại nút nếu Action throw lỗi
+    }
+  };
+
+  /**
+   * THÊM MỚI: Xử lý Copy Session Token
+   */
+  const handleCopyToken = async () => {
+    setIsCopying(true);
+    setErrorMessage(null);
+    let tokenToCopy = sessionTokenForCopy;
+
+    // Nếu chưa có (ví dụ: F5 trang), thử lấy lại từ server
+    if (!tokenToCopy) {
+      console.log(
+        "[UI] Không tìm thấy token, đang gọi getSessionTokenAction...",
+      );
+      try {
+        tokenToCopy = await getSessionTokenAction();
+        setSessionTokenForCopy(tokenToCopy);
+      } catch (error: unknown) {
+        console.error("[UI] Lỗi khi lấy token:", error);
+        setErrorMessage("Không thể lấy session token. Vui lòng đăng nhập lại.");
+        setIsCopying(false);
+        return;
+      }
+    }
+
+    // Sử dụng document.execCommand để đảm bảo hoạt động trong iframe/môi trường bị hạn chế
+    try {
+      const tempTextArea = document.createElement("textarea");
+      tempTextArea.value = tokenToCopy!;
+      tempTextArea.style.position = "absolute";
+      tempTextArea.style.left = "-9999px";
+      document.body.appendChild(tempTextArea);
+      tempTextArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(tempTextArea);
+
+      console.log("[UI] Đã copy token vào clipboard. Mở modal...");
+      // Hiển thị modal
+      setShowTokenModal(true);
+    } catch (err) {
+      console.error("[UI] Lỗi copy:", err);
+      setErrorMessage(
+        "Copy tự động thất bại. Vui lòng copy thủ công từ popup.",
+      );
+      setShowTokenModal(true); // Vẫn hiển thị modal
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
+  // --- Hàm gửi tin nhắn (Không đổi) ---
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
     // Cập nhật điều kiện kiểm tra
@@ -337,8 +490,8 @@ export default function BotControlPanel() {
     if (!result.success) {
       setErrorMessage(result.error || "Gửi thất bại");
     } else {
-      setErrorMessage(null); // Xóa lỗi cũ nếu gửi thành công
-      setMessageContent(""); // Xóa nội dung input
+      setErrorMessage(null);
+      setMessageContent("");
     }
     setIsSending(false);
   };
@@ -373,7 +526,10 @@ export default function BotControlPanel() {
         break;
       case "LOGGING_IN":
         color = "text-blue-400";
-        text = "ĐANG CHỜ QUÉT QR...";
+        text =
+          loginMethod === "qr"
+            ? "ĐANG CHỜ QUÉT QR..."
+            : "ĐANG ĐĂNG NHẬP BẰNG TOKEN...";
         break;
       case "LOGGED_IN":
         color = "text-green-400";
@@ -381,7 +537,7 @@ export default function BotControlPanel() {
         break;
       case "ERROR":
         color = "text-red-400";
-        text = "LỖI KẾT NỐI";
+        text = "LỖI KẾT NỐI/ĐĂNG NHẬP";
         break;
     }
     return <span className={`font-bold ${color}`}>{text}</span>;
@@ -408,7 +564,15 @@ export default function BotControlPanel() {
 
   // --- JSX ---
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 p-4 lg:p-8 font-sans">
+    <div className="min-h-screen bg-gray-900 p-4 text-gray-100 lg:p-8 font-sans">
+      {/* THÊM MỚI: Hiển thị Modal */}
+      {showTokenModal && sessionTokenForCopy && (
+        <TokenModal
+          token={sessionTokenForCopy}
+          onClose={() => setShowTokenModal(false)}
+        />
+      )}
+
       <header className="mb-6">
         <h1 className="text-3xl font-bold text-white">
           Bảng điều khiển Bot ZCA
@@ -423,7 +587,7 @@ export default function BotControlPanel() {
 
       {/* --- THÊM MỚI: Hiển thị Thông tin Tài khoản (Step 1) --- */}
       {accountInfo && (
-        <div className="mb-6 p-4 bg-gray-800 rounded-lg shadow-xl flex items-center gap-4">
+        <div className="mb-6 flex items-center gap-4 rounded-lg bg-gray-800 p-4 shadow-xl">
           <img
             src={accountInfo.avatar}
             alt="Avatar"
@@ -439,7 +603,7 @@ export default function BotControlPanel() {
             <h2 className="text-xl font-bold text-white">
               {accountInfo.displayName}
             </h2>
-            <p className="text-sm text-gray-400 font-mono">
+            <p className="font-mono text-sm text-gray-400">
               ID: {accountInfo.userId}
             </p>
           </div>
@@ -447,49 +611,128 @@ export default function BotControlPanel() {
       )}
       {/* --- Kết thúc thêm mới --- */}
 
-      <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <main className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* === CỘT ĐIỀU KHIỂN (TRÁI) === */}
-        <div className="lg:col-span-1 flex flex-col gap-6">
-          {/* --- Thẻ Đăng nhập --- */}
-          <div className="bg-gray-800 rounded-lg shadow-xl p-6">
-            <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">
+        <div className="flex flex-col gap-6 lg:col-span-1">
+          {/* --- CẬP NHẬT: Thẻ Đăng nhập --- */}
+          <div className="rounded-lg bg-gray-800 p-6 shadow-xl">
+            <h2 className="mb-4 border-b border-gray-700 pb-2 text-xl font-semibold">
               Đăng nhập
             </h2>
 
-            {loginState !== "LOGGED_IN" && (
-              <button
-                onClick={handleStartLogin}
-                disabled={loginState === "LOGGING_IN"}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-wait"
-              >
-                {loginState === "LOGGING_IN"
-                  ? "Đang tải QR..."
-                  : "Bắt đầu Đăng nhập bằng QR"}
-              </button>
+            {/* A. Trạng thái CHƯA ĐĂNG NHẬP (Idle hoặc Lỗi) */}
+            {loginState === "IDLE" || loginState === "ERROR" ? (
+              <div className="flex flex-col gap-4">
+                {/* A.1. Tabs Chọn Phương thức */}
+                <div className="flex rounded-lg bg-gray-700 p-1">
+                  <button
+                    onClick={() => setLoginMethod("qr")}
+                    className={`w-1/2 rounded-md py-2 text-sm font-medium transition-colors ${
+                      loginMethod === "qr"
+                        ? "bg-blue-600 text-white shadow"
+                        : "text-gray-300 hover:bg-gray-600"
+                    }`}
+                  >
+                    Quét Mã QR
+                  </button>
+                  <button
+                    onClick={() => setLoginMethod("token")}
+                    className={`w-1/2 rounded-md py-2 text-sm font-medium transition-colors ${
+                      loginMethod === "token"
+                        ? "bg-blue-600 text-white shadow"
+                        : "text-gray-300 hover:bg-gray-600"
+                    }`}
+                  >
+                    Dùng Session Token
+                  </button>
+                </div>
+
+                {/* A.2. Nội dung Tab QR */}
+                {loginMethod === "qr" && (
+                  <button
+                    onClick={handleStartLoginQR}
+                    // 'isSending' cũng dùng để chặn khi đang login token
+                    disabled={isSending}
+                    className="w-full rounded-lg bg-blue-600 py-3 px-4 font-bold text-white transition duration-200 hover:bg-blue-700 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    Bắt đầu Đăng nhập bằng QR
+                  </button>
+                )}
+
+                {/* A.3. Nội dung Tab Token */}
+                {loginMethod === "token" && (
+                  <div className="flex flex-col gap-3">
+                    <label
+                      htmlFor="token-input"
+                      className="text-sm font-medium text-gray-300"
+                    >
+                      Dán Session Token (JSON)
+                    </label>
+                    <textarea
+                      id="token-input"
+                      value={tokenInput}
+                      onChange={(e) => setTokenInput(e.target.value)}
+                      placeholder='{"cookie":{...},"imei":"...","userAgent":"..."}'
+                      rows={4}
+                      className="w-full rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={handleStartLoginWithToken}
+                      // 'isSending' dùng chung cho các hành động đăng nhập
+                      disabled={isSending || !tokenInput}
+                      className="w-full rounded-lg bg-green-600 py-3 px-4 font-bold text-white transition duration-200 hover:bg-green-700 disabled:cursor-wait disabled:opacity-50"
+                    >
+                      {isSending ? "Đang xác thực..." : "Đăng nhập bằng Token"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* B. Trạng thái ĐANG ĐĂNG NHẬP */}
+            {loginState === "LOGGING_IN" && (
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-blue-400">{renderStatus()}</p>
+                {/* Chỉ hiển thị QR nếu là phương thức QR */}
+                {qrCode && loginMethod === "qr" && (
+                  <div className="mt-4 rounded-lg bg-white p-4">
+                    <img
+                      src={qrCode}
+                      alt="Zalo QR Code"
+                      className="h-auto w-full"
+                    />
+                    <p className="mt-2 text-center text-black">
+                      Quét mã này bằng Zalo
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
 
+            {/* C. Trạng thái ĐÃ ĐĂNG NHẬP */}
             {loginState === "LOGGED_IN" && (
-              <p className="text-green-400">Đã kết nối và đang lắng nghe...</p>
-            )}
-
-            {qrCode && loginState === "LOGGING_IN" && (
-              <div className="mt-4 p-4 bg-white rounded-lg">
-                <img
-                  src={qrCode}
-                  alt="Zalo QR Code"
-                  className="w-full h-auto"
-                />
-                <p className="text-center text-black mt-2">
-                  Quét mã này bằng Zalo
+              <div className="flex flex-col gap-4">
+                <p className="text-green-400">
+                  Đã kết nối và đang lắng nghe...
                 </p>
+                <button
+                  onClick={handleCopyToken}
+                  disabled={isCopying}
+                  className="w-full rounded-lg bg-teal-600 py-3 px-4 font-bold text-white transition duration-200 hover:bg-teal-700 disabled:cursor-wait disabled:opacity-50"
+                >
+                  {isCopying
+                    ? "Đang lấy token..."
+                    : "Sao chép (Copy) Session Token"}
+                </button>
               </div>
             )}
           </div>
+          {/* --- Kết thúc CẬP NHẬT Thẻ Đăng nhập --- */}
 
-          {/* --- Thẻ Gửi tin nhắn (CẬP NHẬT) --- */}
+          {/* --- Thẻ Gửi tin nhắn (Không đổi) --- */}
           {loginState === "LOGGED_IN" && (
-            <div className="bg-gray-800 rounded-lg shadow-xl p-6">
-              <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">
+            <div className="rounded-lg bg-gray-800 p-6 shadow-xl">
+              <h2 className="mb-4 border-b border-gray-700 pb-2 text-xl font-semibold">
                 Gửi tin nhắn (Steps 2, 3, 4)
               </h2>
               <form
@@ -500,13 +743,11 @@ export default function BotControlPanel() {
                 <div>
                   <label
                     htmlFor="threadId"
-                    className="block text-sm font-medium text-gray-300 mb-1"
+                    className="mb-1 block text-sm font-medium text-gray-300"
                   >
                     Chọn Hội thoại
                   </label>
-
-                  {/* --- THÊM MỚI: Nút tải lại thủ công --- */}
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="mb-2 flex items-center gap-2">
                     <select
                       id="threadId"
                       value={selectedThread ? selectedThread.id : ""}
@@ -516,7 +757,7 @@ export default function BotControlPanel() {
                         );
                         setSelectedThread(foundThread || null);
                       }}
-                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-gray-600 bg-gray-700 p-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="" disabled>
                         {isLoadingThreads ? "..." : "--- Chọn 1 hội thoại ---"}
@@ -532,7 +773,7 @@ export default function BotControlPanel() {
                       type="button"
                       onClick={handleFetchThreads}
                       disabled={isLoadingThreads}
-                      className="p-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-wait"
+                      className="rounded-lg bg-gray-600 p-2 text-white transition duration-200 hover:bg-gray-500 disabled:cursor-wait disabled:opacity-50"
                       title="Tải lại danh sách hội thoại"
                     >
                       {/* Thêm biểu tượng SVG Tải lại (xoay nếu đang tải) */}
@@ -542,7 +783,7 @@ export default function BotControlPanel() {
                         viewBox="0 0 24 24"
                         strokeWidth={1.5}
                         stroke="currentColor"
-                        className={`w-5 h-5 ${
+                        className={`h-5 w-5 ${
                           isLoadingThreads ? "animate-spin" : ""
                         }`}
                       >
@@ -557,7 +798,7 @@ export default function BotControlPanel() {
                   {/* --- Kết thúc thêm mới --- */}
 
                   {isLoadingThreads && (
-                    <div className="w-full text-sm text-gray-400 italic">
+                    <div className="w-full text-sm italic text-gray-400">
                       Đang tải danh sách...
                     </div>
                   )}
@@ -567,7 +808,7 @@ export default function BotControlPanel() {
                 <div>
                   <label
                     htmlFor="message"
-                    className="block text-sm font-medium text-gray-300 mb-1"
+                    className="mb-1 block text-sm font-medium text-gray-300"
                   >
                     Nội dung
                   </label>
@@ -606,7 +847,7 @@ export default function BotControlPanel() {
                         checked={isEchoBotEnabled}
                         onChange={handleToggleEchoBot}
                       />
-                      <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-500 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      <div className="peer h-6 w-11 rounded-full bg-gray-600 after:absolute after:top-0.5 after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:content-[''] after:transition-all peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-blue-500"></div>
                     </div>
                   </label>
                 </div>
@@ -616,25 +857,25 @@ export default function BotControlPanel() {
           )}
         </div>
 
-        {/* === CỘT LOG (PHẢI) === */}
-        <div className="lg:col-span-2 bg-gray-800 rounded-lg shadow-xl p-6">
-          <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">
+        {/* === CỘT LOG (PHẢI) (Không đổi) === */}
+        <div className="rounded-lg bg-gray-800 p-6 shadow-xl lg:col-span-2">
+          <h2 className="mb-4 border-b border-gray-700 pb-2 text-xl font-semibold">
             Log Tin Nhắn (Real-time)
           </h2>
-          <div className="h-[600px] overflow-y-auto bg-gray-900 rounded-lg p-4 space-y-4">
+          <div className="h-[600px] space-y-4 overflow-y-auto rounded-lg bg-gray-900 p-4">
             {messages.length === 0 ? (
-              <p className="text-gray-500 italic text-center pt-4">
+              <p className="pt-4 text-center italic text-gray-500">
                 Chưa có tin nhắn nào...
               </p>
             ) : (
               messages.map((msg, index) => (
                 <div
                   key={msg.data.ts + index}
-                  className={`p-3 rounded-lg ${
-                    msg.isSelf ? "bg-blue-900 ml-auto" : "bg-gray-700"
-                  } max-w-xl`}
+                  className={`max-w-xl rounded-lg p-3 ${
+                    msg.isSelf ? "ml-auto bg-blue-900" : "bg-gray-700"
+                  }`}
                 >
-                  <div className="flex justify-between items-center mb-1">
+                  <div className="mb-1 flex items-center justify-between">
                     <span className="text-sm font-bold text-teal-300">
                       {msg.data.dName}
                     </span>
@@ -642,10 +883,10 @@ export default function BotControlPanel() {
                       {new Date(parseInt(msg.data.ts, 10)).toLocaleTimeString()}
                     </span>
                   </div>
-                  <p className="text-white whitespace-pre-wrap break-words">
+                  <p className="whitespace-pre-wrap break-words text-white">
                     {renderMessageContent(msg)}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="mt-1 text-xs text-gray-500">
                     ThreadID: {msg.threadId}
                   </p>
                 </div>

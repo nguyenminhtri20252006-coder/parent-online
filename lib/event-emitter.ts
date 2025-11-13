@@ -43,4 +43,6 @@ export const ZALO_EVENTS = {
   NEW_MESSAGE: "new_message",
   // Báo cáo trạng thái chung
   STATUS_UPDATE: "status_update",
+  // THÊM MỚI: Sự kiện khi session (token) được tạo/sẵn sàng
+  SESSION_GENERATED: "session_generated",
 };
