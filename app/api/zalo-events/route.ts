@@ -29,6 +29,12 @@ function createSSEStream(controller: ReadableStreamDefaultController) {
 
   // --- Lắng nghe các sự kiện từ Singleton Service ---
   const onQrGenerated = (qrBase64: string) => {
+    console.log(
+      `[SSE DEBUG] 4/6: Đã bắt được sự kiện QR_GENERATED. Đang gửi data... (data: ${qrBase64.substring(
+        0,
+        50,
+      )}...)`,
+    ); // <-- DEBUG LOG 4
     // SỬA LỖI (KẾ HOẠCH E/F): Gửi thẳng string base64, không bọc object
     sendRawEvent(ZALO_EVENTS.QR_GENERATED, qrBase64);
   };

@@ -100,7 +100,10 @@ export class ZaloSingletonService {
     this.zalo
       .loginQR({}, (qrDataOrPath: unknown) => {
         // Callback này được gọi khi thư viện CÓ dữ liệu QR
-        console.log("[Service] Callback QR data/path:", qrDataOrPath);
+        console.log(
+          "[Service DEBUG] 1/6: Callback loginQR được gọi. Dữ liệu thô:",
+          qrDataOrPath,
+        ); // <-- DEBUG LOG 1
 
         try {
           // KẾ HOẠCH C: Xử lý cả hai trường hợp
@@ -124,15 +127,22 @@ export class ZaloSingletonService {
 
           // Xử lý kết quả
           if (base64Image) {
-            console.log("[Service] Đã có base64. Đang gửi đến frontend...");
+            console.log(
+              `[Service DEBUG] 3/6: Đã có base64. Đang emit... (data: ${base64Image.substring(
+                0,
+                50,
+              )}...)`,
+            ); // <-- DEBUG LOG 3
             globalZaloEmitter.emit(ZALO_EVENTS.QR_GENERATED, base64Image);
           } else {
-            // Nếu cả hai trường hợp đều thất bại
-            throw new Error(
-              `Cấu trúc dữ liệu QR không mong đợi (Chỉ chấp nhận Luồng 3 'data.image'): ${JSON.stringify(
-                qrDataOrPath,
-              )}`,
+            // SỬA LỖI: Bỏ qua các sự kiện callback không phải là QR image
+            // (ví dụ: { type: 1, data: null } là sự kiện 'expired' hoặc 'scanned')
+            // Đây không phải là lỗi, chỉ là thông báo từ thư viện.
+            console.warn(
+              "[Service WARN] Nhận được sự kiện callback không phải QR image (ví dụ: expired, scanned). Bỏ qua.",
+              qrDataOrPath,
             );
+            return; // Quan trọng: Không làm gì cả và không báo lỗi
           }
         } catch (error: unknown) {
           console.error("[Service] Lỗi nghiêm trọng khi xử lý QR:", error);

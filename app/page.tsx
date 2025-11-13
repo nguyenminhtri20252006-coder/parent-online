@@ -95,6 +95,12 @@ export default function BotControlPanel() {
         case ZALO_EVENTS.QR_GENERATED:
           // SỬA LỖI (KẾ HOẠCH E): SSE gửi về string base64 thô
           if (data && typeof data === "string") {
+            console.log(
+              `[UI DEBUG] 6/6: Đang setQrCode state... (data: ${data.substring(
+                0,
+                50,
+              )}...)`,
+            ); // <-- DEBUG LOG 6
             setQrCode(data); // Hiển thị ảnh QR
           } else {
             console.warn(
@@ -160,6 +166,10 @@ export default function BotControlPanel() {
     eventSource.addEventListener(ZALO_EVENTS.QR_GENERATED, (event) => {
       // SỬA LỖI (KẾ HOẠCH E): Không parse JSON vì data là string thô
       const data = event.data;
+      console.log(
+        `[UI DEBUG] 5/6: Đã nhận sự kiện QR_GENERATED. Data nhận được (thô):`,
+        data,
+      ); // <-- DEBUG LOG 5
       handleSSEMessage(ZALO_EVENTS.QR_GENERATED, data);
     });
 
