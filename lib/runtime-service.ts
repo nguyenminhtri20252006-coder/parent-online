@@ -155,7 +155,6 @@ export class ZaloSingletonService {
         // Callback này được gọi khi thư viện CÓ dữ liệu QR
         console.log(
           "[Service DEBUG] 1/6: Callback loginQR được gọi. Dữ liệu thô:",
-          qrDataOrPath,
         ); // <-- DEBUG LOG 1
 
         try {
@@ -440,6 +439,27 @@ export class ZaloSingletonService {
     console.log("[Service] Đang tải thông tin tài khoản (fetchAccountInfo)...");
     try {
       const info: User = await this.api.fetchAccountInfo();
+
+      // --- DEBUG LOG (SERVER-SIDE) ---
+      // Thêm log này để xem chính xác zca-js trả về cái gì
+      console.log(
+        "[Service-DEBUG] Dữ liệu 'info' thô nhận được từ this.api.fetchAccountInfo():",
+        JSON.stringify(info, null, 2),
+      );
+      // --- KẾT THÚC DEBUG LOG ---
+
+      // Thêm kiểm tra an toàn
+      if (!info || !info.userId) {
+        console.warn(
+          "[Service-WARN] fetchAccountInfo() trả về dữ liệu không hợp lệ hoặc rỗng.",
+          info,
+        );
+        // Trả về một lỗi rõ ràng thay vì object rỗng
+        throw new Error(
+          "Không thể lấy thông tin tài khoản từ Zalo API (dữ liệu trả về rỗng).",
+        );
+      }
+
       return {
         userId: info.userId,
         displayName: info.displayName,
