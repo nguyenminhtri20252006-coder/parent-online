@@ -6,7 +6,8 @@
  */
 
 // Import các thư viện Node.js cần thiết
-import { promises as fs } from "fs";
+// CẬP NHẬT: Chỉ import fsPromise vì không dùng fs.readFileSync nữa
+import { promises as fsPromise } from "fs";
 import path from "path";
 
 // Import các thư viện bên ngoài
@@ -22,7 +23,7 @@ import { globalZaloEmitter, ZALO_EVENTS } from "./event-emitter";
  */
 async function imageMetadataGetter(filePath: string) {
   try {
-    const data = await fs.readFile(filePath);
+    const data = await fsPromise.readFile(filePath);
     const metadata = await sharp(data).metadata();
     return {
       height: metadata.height,
@@ -53,9 +54,8 @@ export class ZaloSingletonService {
   private constructor() {
     console.log("[Service] Đang khởi tạo ZaloSingletonService lần đầu...");
 
-    // Đảm bảo thư mục 'public' tồn tại (cho các tệp khác sau này)
-    // Mặc dù không dùng cho QR nữa, việc này vẫn tốt
-    fs.mkdir(path.join(process.cwd(), "public")).catch((err) => {
+    // Đảm bảo thư mục 'public' tồn tại
+    fsPromise.mkdir(path.join(process.cwd(), "public")).catch((err) => {
       // Bỏ qua lỗi nếu thư mục đã tồn tại
       if (err.code !== "EEXIST") {
         console.error("[Service] Không thể tạo thư mục public:", err);
@@ -98,31 +98,48 @@ export class ZaloSingletonService {
     // Chạy bất đồng bộ
     // SỬA LỖI: Không dùng qrPath, thay bằng callback (qrData)
     this.zalo
-      .loginQR({}, (qrData: unknown) => {
+      .loginQR({}, (qrDataOrPath: unknown) => {
         // Callback này được gọi khi thư viện CÓ dữ liệu QR
-        console.log("[Service] Callback QR data:", qrData); // (Dùng để debug)
+        console.log("[Service] Callback QR data/path:", qrDataOrPath);
 
-        // SỬA LỖI (Dựa trên log image_8e4285.png):
-        // Cấu trúc đúng là qrData.data.nbf
-        if (
-          qrData &&
-          typeof qrData === "object" &&
-          "data" in qrData &&
-          typeof qrData.data === "object" &&
-          qrData.data &&
-          "nbf" in qrData.data &&
-          typeof qrData.data.nbf === "string"
-        ) {
-          console.log("[Service] Đã nhận QR base64 từ qrData.data.nbf.");
-          // Phát sự kiện QR_GENERATED với chuỗi base64
-          globalZaloEmitter.emit(ZALO_EVENTS.QR_GENERATED, qrData.data.nbf);
-        } else {
-          console.error(
-            "[Service] Cấu trúc dữ liệu QR không mong đợi:",
-            qrData,
-          );
+        try {
+          // KẾ HOẠCH C: Xử lý cả hai trường hợp
+          let base64Image: string | null = null;
+
+          // Trường hợp 3 (Luồng 3 - Log mới): Thư viện trả về object (data.image)
+          if (
+            qrDataOrPath &&
+            typeof qrDataOrPath === "object" &&
+            "data" in qrDataOrPath &&
+            typeof qrDataOrPath.data === "object" &&
+            qrDataOrPath.data &&
+            "image" in qrDataOrPath.data &&
+            typeof qrDataOrPath.data.image === "string"
+          ) {
+            console.log(
+              "[Service] Luồng 3 (image): Nhận được QR base64 trực tiếp (image).",
+            );
+            base64Image = qrDataOrPath.data.image; // Đây đã là data URI
+          }
+
+          // Xử lý kết quả
+          if (base64Image) {
+            console.log("[Service] Đã có base64. Đang gửi đến frontend...");
+            globalZaloEmitter.emit(ZALO_EVENTS.QR_GENERATED, base64Image);
+          } else {
+            // Nếu cả hai trường hợp đều thất bại
+            throw new Error(
+              `Cấu trúc dữ liệu QR không mong đợi (Chỉ chấp nhận Luồng 3 'data.image'): ${JSON.stringify(
+                qrDataOrPath,
+              )}`,
+            );
+          }
+        } catch (error: unknown) {
+          console.error("[Service] Lỗi nghiêm trọng khi xử lý QR:", error);
+          const errorMsg =
+            error instanceof Error ? error.message : "Lỗi không xác định";
           this.loginState = "ERROR";
-          this.loginError = "Cấu trúc QR không hợp lệ";
+          this.loginError = `Không thể xử lý dữ liệu QR: ${errorMsg}`;
           globalZaloEmitter.emit(ZALO_EVENTS.LOGIN_FAILURE, this.loginError);
           globalZaloEmitter.emit(ZALO_EVENTS.STATUS_UPDATE, this.getStatus());
         }
@@ -201,7 +218,12 @@ export class ZaloSingletonService {
 
     try {
       console.log(`[Service] Đang gửi tin nhắn "${content}" tới ${threadId}`);
-      await this.api.sendMessage(content, threadId);
+      // Lấy type (User/Group) từ threadId.
+      // Đây là một phỏng đoán dựa trên logic Zalo, bạn có thể cần điều chỉnh
+      // Hoặc yêu cầu người dùng nhập type trong UI
+      const threadType = threadId.includes("@g.us") ? 1 : 0; // 1 = Group, 0 = User
+
+      await this.api.sendMessage(content, threadId, threadType);
       return { success: true };
     } catch (error: unknown) {
       console.error("[Service] Lỗi gửi tin nhắn:", error);

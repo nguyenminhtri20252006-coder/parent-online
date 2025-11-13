@@ -19,9 +19,18 @@ function createSSEStream(controller: ReadableStreamDefaultController) {
     controller.enqueue(encoder.encode(message));
   };
 
+  // SỬA LỖI (KẾ HOẠCH E/F): Hàm gửi sự kiện dạng Thô (cho string)
+  // Chúng ta cần điều này vì QR code là string, không phải object
+  // và JSON.stringify() sẽ bọc nó trong dấu ngoặc kép ("..."), làm hỏng src của ảnh.
+  const sendRawEvent = (eventName: string, rawData: string) => {
+    const message = `event: ${eventName}\ndata: ${rawData}\n\n`;
+    controller.enqueue(encoder.encode(message));
+  };
+
   // --- Lắng nghe các sự kiện từ Singleton Service ---
   const onQrGenerated = (qrBase64: string) => {
-    sendEvent(ZALO_EVENTS.QR_GENERATED, { qr: qrBase64 });
+    // SỬA LỖI (KẾ HOẠCH E/F): Gửi thẳng string base64, không bọc object
+    sendRawEvent(ZALO_EVENTS.QR_GENERATED, qrBase64);
   };
 
   const onLoginSuccess = () => {

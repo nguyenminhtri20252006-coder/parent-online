@@ -93,14 +93,14 @@ export default function BotControlPanel() {
           }
           break;
         case ZALO_EVENTS.QR_GENERATED:
-          // SỬA LỖI: SSE gửi về { qr: '...' }
-          if (
-            data &&
-            typeof data === "object" &&
-            "qr" in data &&
-            typeof data.qr === "string"
-          ) {
-            setQrCode(data.qr); // Hiển thị ảnh QR
+          // SỬA LỖI (KẾ HOẠCH E): SSE gửi về string base64 thô
+          if (data && typeof data === "string") {
+            setQrCode(data); // Hiển thị ảnh QR
+          } else {
+            console.warn(
+              "Nhận được qr_generated nhưng data không phải string:",
+              data,
+            );
           }
           break;
         case ZALO_EVENTS.LOGIN_SUCCESS:
@@ -158,7 +158,8 @@ export default function BotControlPanel() {
 
     // Lắng nghe sự kiện QR
     eventSource.addEventListener(ZALO_EVENTS.QR_GENERATED, (event) => {
-      const data = JSON.parse(event.data);
+      // SỬA LỖI (KẾ HOẠCH E): Không parse JSON vì data là string thô
+      const data = event.data;
       handleSSEMessage(ZALO_EVENTS.QR_GENERATED, data);
     });
 
