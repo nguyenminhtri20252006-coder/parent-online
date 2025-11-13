@@ -11,11 +11,37 @@ import { promises as fsPromise } from "fs";
 import path from "path";
 
 // Import các thư viện bên ngoài
-import { Zalo, API } from "zca-js";
+import {
+  Zalo,
+  API,
+  User,
+  GetAllGroupsResponse,
+  GroupInfoResponse,
+} from "zca-js";
 import sharp from "sharp";
 
 // Import Emitter toàn cục
 import { globalZaloEmitter, ZALO_EVENTS } from "./event-emitter";
+/**
+ * Thông tin tài khoản (Bot) đã đăng nhập.
+ * (Trích xuất từ 'User' của zca-js)
+ */
+export type AccountInfo = {
+  userId: string;
+  displayName: string;
+  avatar: string;
+};
+
+/**
+ * Thông tin hội thoại (đã hợp nhất).
+ * (Trích xuất từ 'User' hoặc 'GroupInfo' của zca-js)
+ */
+export type ThreadInfo = {
+  id: string; // userId (bạn bè) hoặc groupId (nhóm)
+  name: string; // displayName (bạn bè) hoặc name (nhóm)
+  avatar: string; // avatar (cả hai)
+  type: 0 | 1; // 0 = User, 1 = Group
+};
 
 /**
  * Hàm trợ giúp lấy metadata ảnh (theo yêu cầu của zca-js).
@@ -35,6 +61,9 @@ async function imageMetadataGetter(filePath: string) {
     throw error;
   }
 }
+const customGlobal = globalThis as typeof globalThis & {
+  zaloServiceInstance: ZaloSingletonService;
+};
 
 /**
  * Lớp Singleton Service
@@ -42,6 +71,7 @@ async function imageMetadataGetter(filePath: string) {
  */
 export class ZaloSingletonService {
   // 1. Biến static để giữ instance duy nhất
+  // (Sửa lỗi Singleton: Tạm thời giữ lại, nhưng getInstance sẽ dùng globalThis)
   private static instance: ZaloSingletonService;
 
   // 2. Các thuộc tính trạng thái
@@ -49,6 +79,7 @@ export class ZaloSingletonService {
   private api: API | null = null;
   private loginState: "IDLE" | "LOGGING_IN" | "LOGGED_IN" | "ERROR" = "IDLE";
   private loginError: string | null = null;
+  private isEchoBotEnabled: boolean = false; // Mặc định TẮT Bot Nhại
 
   // 3. Constructor (private)
   private constructor() {
@@ -71,10 +102,20 @@ export class ZaloSingletonService {
 
   // 4. Phương thức static để lấy instance (Singleton pattern)
   public static getInstance(): ZaloSingletonService {
-    if (!ZaloSingletonService.instance) {
-      ZaloSingletonService.instance = new ZaloSingletonService();
+    // --- SỬA LỖI KIẾN TRÚC: Đảm bảo Singleton trong môi trường Next.js ---
+    // 1. Mở rộng 'globalThis'
+    const customGlobal = globalThis as typeof globalThis & {
+      zaloServiceInstance: ZaloSingletonService;
+    };
+
+    // 2. Khởi tạo nếu chưa tồn tại
+    if (!customGlobal.zaloServiceInstance) {
+      console.log(
+        "[Global] Đang khởi tạo ZaloSingletonService (Singleton) lần đầu...",
+      );
+      customGlobal.zaloServiceInstance = new ZaloSingletonService();
     }
-    return ZaloSingletonService.instance;
+    return customGlobal.zaloServiceInstance;
   }
 
   // 5. Phương thức bắt đầu quá trình đăng nhập QR
@@ -127,6 +168,16 @@ export class ZaloSingletonService {
 
           // Xử lý kết quả
           if (base64Image) {
+            // --- SỬA LỖI: Đảm bảo Data URI hợp lệ ---
+            // Kiểm tra xem chuỗi đã có tiền tố 'data:image' chưa
+            if (!base64Image.startsWith("data:image")) {
+              console.log(
+                "[Service] Sửa lỗi: Tự động thêm tiền tố 'data:image/png;base64,' vào QR code.",
+              );
+              base64Image = `data:image/png;base64,${base64Image}`;
+            }
+            // --- Kết thúc sửa lỗi ---
+
             console.log(
               `[Service DEBUG] 3/6: Đã có base64. Đang emit... (data: ${base64Image.substring(
                 0,
@@ -195,15 +246,25 @@ export class ZaloSingletonService {
         // Phát sự kiện lên Emitter để SSE Route bắt được
         globalZaloEmitter.emit(ZALO_EVENTS.NEW_MESSAGE, msg);
 
-        // Logic tự động (Ví dụ: Bot nhại lại)
-        if (typeof msg.data.content === "string" && !msg.isSelf) {
+        // --- CẬP NHẬT LOGIC: Bot Nhại (Echo Bot) ---
+        // Chỉ nhại lại nếu công tắc (biến) isEchoBotEnabled là true
+        if (
+          this.isEchoBotEnabled && // KIỂM TRA CÔNG TẮC
+          typeof msg.data.content === "string" &&
+          !msg.isSelf
+        ) {
           const content = msg.data.content;
           // Chỉ nhại lại nếu không phải là bot tự nhại
           if (!content.startsWith("Bot nhại: ")) {
+            console.log(
+              `[Service] Bot Nhại ĐANG BẬT. Đang nhại lại tin nhắn tới ${msg.threadId}`,
+            );
             this.api
               ?.sendMessage(`Bot nhại: ${content}`, msg.threadId, msg.type)
               .catch(console.error);
           }
+        } else if (!this.isEchoBotEnabled && !msg.isSelf) {
+          console.log("[Service] Bot Nhại ĐANG TẮT. Bỏ qua tin nhắn đến.");
         }
       } catch (e) {
         console.error('[Service] Lỗi xử lý listener "message":', e);
@@ -220,6 +281,7 @@ export class ZaloSingletonService {
   public async sendMessage(
     content: string,
     threadId: string,
+    type: 0 | 1, // BẮT BUỘC THÊM TYPE
   ): Promise<{ success: boolean; error?: string }> {
     if (this.loginState !== "LOGGED_IN" || !this.api) {
       console.warn("[Service] sendMessage thất bại: Chưa đăng nhập.");
@@ -227,13 +289,15 @@ export class ZaloSingletonService {
     }
 
     try {
-      console.log(`[Service] Đang gửi tin nhắn "${content}" tới ${threadId}`);
-      // Lấy type (User/Group) từ threadId.
-      // Đây là một phỏng đoán dựa trên logic Zalo, bạn có thể cần điều chỉnh
-      // Hoặc yêu cầu người dùng nhập type trong UI
-      const threadType = threadId.includes("@g.us") ? 1 : 0; // 1 = Group, 0 = User
+      console.log(
+        `[Service] Đang gửi tin nhắn "${content}" tới ${threadId} (Type: ${
+          type === 0 ? "User" : "Group"
+        })`,
+      );
 
-      await this.api.sendMessage(content, threadId, threadType);
+      // XÓA: Logic cũ `const threadType = threadId.includes("@g.us") ? 1 : 0;`
+      // Sử dụng 'type' được truyền vào trực tiếp
+      await this.api.sendMessage(content, threadId, type);
       return { success: true };
     } catch (error: unknown) {
       console.error("[Service] Lỗi gửi tin nhắn:", error);
@@ -252,5 +316,135 @@ export class ZaloSingletonService {
       loginState: this.loginState,
       error: this.loginError,
     };
+  }
+  /**
+   * [Step 1] Lấy thông tin tài khoản (Bot) đang đăng nhập
+   */
+  public async getAccountInfo(): Promise<AccountInfo> {
+    if (this.loginState !== "LOGGED_IN" || !this.api) {
+      console.warn("[Service] getAccountInfo thất bại: Chưa đăng nhập.");
+      throw new Error("Chưa đăng nhập");
+    }
+    console.log("[Service] Đang tải thông tin tài khoản (fetchAccountInfo)...");
+    try {
+      const info: User = await this.api.fetchAccountInfo();
+      return {
+        userId: info.userId,
+        displayName: info.displayName,
+        avatar: info.avatar,
+      };
+    } catch (error) {
+      console.error("[Service] Lỗi getAccountInfo:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * [Steps 2 & 3] Lấy và hợp nhất danh sách hội thoại (Bạn bè & Nhóm)
+   */
+  public async getThreads(): Promise<ThreadInfo[]> {
+    if (this.loginState !== "LOGGED_IN" || !this.api) {
+      console.warn("[Service] getThreads thất bại: Chưa đăng nhập.");
+      throw new Error("Chưa đăng nhập");
+    }
+    console.log("[Service] Đang tải danh sách hội thoại (getThreads)...");
+
+    const mergedThreads: ThreadInfo[] = [];
+
+    try {
+      // --- Step 2: Tải danh sách Bạn bè ---
+      console.log("[Service] Đang tải danh sách bạn bè (getAllFriends)...");
+      const friends: User[] = await this.api.getAllFriends();
+      console.log(`[Service] Đã tải ${friends.length} bạn bè.`);
+
+      friends.forEach((friend) => {
+        mergedThreads.push({
+          id: friend.userId,
+          name: friend.displayName || friend.zaloName, // Dùng displayName, fallback về zaloName
+          avatar: friend.avatar,
+          type: 0, // 0 = User
+        });
+      });
+      console.log(`[Service] Đã tải ${friends.length} bạn bè.`);
+
+      // --- Step 3: Tải danh sách Nhóm (Luồng 2 bước) ---
+      console.log("[Service] Đang tải danh sách nhóm (getAllGroups)...");
+      // Step 3.1: Lấy ID Nhóm
+      const groupsResponse: GetAllGroupsResponse =
+        await this.api.getAllGroups();
+      const groupIds = Object.keys(groupsResponse.gridVerMap);
+      console.log(`[Service] Tìm thấy ${groupIds.length} ID nhóm.`);
+
+      if (groupIds.length > 0) {
+        // SỬA LỖI: Chia lô (Batching) để tránh lỗi "Tham số không hợp lệ"
+        // API có thể có giới hạn số lượng ID trong một lần gọi.
+
+        // Thêm logic debug
+        // Hàm trợ giúp delay
+        const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+        const CHUNK_SIZE = 20; // Đặt kích thước lô an toàn
+        const totalChunks = Math.ceil(groupIds.length / CHUNK_SIZE);
+
+        console.log(
+          `[Service Debug] Bắt đầu xử lý ${groupIds.length} ID nhóm thành ${totalChunks} lô (mỗi lô tối đa ${CHUNK_SIZE} ID).`,
+        );
+
+        // Lặp qua các lô
+        for (let i = 0; i < groupIds.length; i += CHUNK_SIZE) {
+          const chunk = groupIds.slice(i, i + CHUNK_SIZE);
+          console.log(
+            `[Service Debug] Đang xử lý lô ${i / CHUNK_SIZE + 1}/${Math.ceil(
+              groupIds.length / CHUNK_SIZE,
+            )} (IDs: ${chunk.join(", ")})`,
+          );
+
+          // Step 3.2: Lấy thông tin chi tiết nhóm (theo lô)
+          console.log(
+            "[Service] Đang tải thông tin chi tiết nhóm (getGroupInfo)...",
+          );
+          const groupInfos: GroupInfoResponse = await this.api.getGroupInfo(
+            chunk,
+          );
+
+          // Lặp qua Map kết quả
+          // SỬA LỖI TS(2349): gridInfoMap là Object, không phải Map
+          Object.entries(groupInfos.gridInfoMap).forEach(([groupId, group]) => {
+            mergedThreads.push({
+              id: groupId, // Key của Map chính là groupId
+              name: group.name,
+              avatar: group.avt,
+              type: 1, // 1 = Group
+            });
+          });
+
+          // Thêm độ trễ (delay) 200ms để tránh rate-limit
+          await new Promise((res) => setTimeout(res, 200));
+        }
+        console.log("[Service Debug] Hoàn tất xử lý tất cả các lô.");
+        // --- Kết thúc Sửa lỗi Batching ---
+      }
+
+      console.log(
+        `[Service] Tải hoàn tất. Tổng số hội thoại: ${mergedThreads.length}`,
+      );
+      return mergedThreads;
+    } catch (error) {
+      console.error("[Service] Lỗi getThreads:", error);
+      throw error;
+    }
+  }
+
+  // --- THÊM MỚI: Phương thức Bật/Tắt Bot Nhại ---
+  /**
+   * Cập nhật trạng thái Bật/Tắt của Bot Nhại
+   * @param isEnabled Trạng thái mới (true = Bật)
+   */
+  public setEchoBotState(isEnabled: boolean) {
+    this.isEchoBotEnabled = isEnabled;
+    console.log(
+      `[Service] Trạng thái Bot Nhại đã được cập nhật thành: ${
+        isEnabled ? "BẬT" : "TẮT"
+      }`,
+    );
   }
 }

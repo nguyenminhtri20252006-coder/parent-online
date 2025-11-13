@@ -8,7 +8,12 @@
 
 // (Quan trọng) Import này sẽ KHÔNG khởi tạo lại service
 // vì `runtime-service.ts` đã được chạy và cache trong tiến trình Node.js
-import { ZaloSingletonService } from "@/lib/runtime-service";
+import {
+  ZaloSingletonService,
+  // THÊM: Import các kiểu dữ liệu (types) để trả về
+  type AccountInfo,
+  type ThreadInfo,
+} from "@/lib/runtime-service";
 
 /**
  * Kích hoạt quá trình đăng nhập QR
@@ -29,17 +34,65 @@ export async function getLoginStatusAction() {
 
 /**
  * Gửi một tin nhắn
+ * THAY ĐỔI: Thêm tham số 'type' (0 hoặc 1)
  */
-// SỬA LỖI: Thay đổi tham số từ (formData: FormData) thành (content: string, threadId: string)
-// để khớp với cách gọi từ app/page.tsx
-export async function sendMessageAction(content: string, threadId: string) {
-  // Bỏ các dòng .get() vì đã có tham số trực tiếp
-  // const content = formData.get('content') as string;
-  // const threadId = formData.get('threadId') as string;
+export async function sendMessageAction(
+  content: string,
+  threadId: string,
+  type: 0 | 1, // Thêm tham số này
+) {
+  // ... (Xóa các dòng formData.get) ...
 
   if (!content || !threadId) {
     return { success: false, error: "Thiếu content hoặc threadId" };
   }
+  // Cập nhật lệnh gọi để truyền 'type'
+  return ZaloSingletonService.getInstance().sendMessage(
+    content,
+    threadId,
+    type,
+  );
+}
 
-  return ZaloSingletonService.getInstance().sendMessage(content, threadId);
+// --- THÊM MỚI: Các Actions cho luồng nghiệp vụ ---
+
+/**
+ * [Step 1] Lấy thông tin tài khoản (Bot) đang đăng nhập
+ */
+export async function getAccountInfoAction(): Promise<AccountInfo | null> {
+  console.log("[Action] Yêu cầu getAccountInfoAction...");
+  try {
+    return await ZaloSingletonService.getInstance().getAccountInfo();
+  } catch (error) {
+    console.error("[Action Error] getAccountInfoAction:", error);
+    // Ném lỗi về cho client component xử lý (trong try/catch)
+    throw new Error(
+      error instanceof Error ? error.message : "Lỗi không xác định ở Action",
+    );
+  }
+}
+
+/**
+ * [Steps 2 & 3] Lấy danh sách hội thoại (Bạn bè & Nhóm)
+ */
+export async function getThreadsAction(): Promise<ThreadInfo[]> {
+  console.log("[Action] Yêu cầu getThreadsAction...");
+  try {
+    return await ZaloSingletonService.getInstance().getThreads();
+  } catch (error) {
+    console.error("[Action Error] getThreadsAction:", error);
+    throw new Error(
+      error instanceof Error ? error.message : "Lỗi không xác định ở Action",
+    );
+  }
+}
+
+// --- THÊM MỚI: Action Bật/Tắt Bot Nhại ---
+/**
+ * Action: Cập nhật trạng thái Bật/Tắt của Bot Nhại
+ */
+export async function setEchoBotStateAction(isEnabled: boolean) {
+  console.log(`[Action] Yêu cầu setEchoBotStateAction: ${isEnabled}`);
+  // Đây là lệnh 'void', không cần try/catch trừ khi muốn báo lỗi về UI
+  ZaloSingletonService.getInstance().setEchoBotState(isEnabled);
 }

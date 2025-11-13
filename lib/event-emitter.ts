@@ -7,8 +7,29 @@
  */
 import { EventEmitter } from "events";
 
+// --- SỬA LỖI KIẾN TRÚC: Đảm bảo Singleton trong môi trường Next.js ---
+
+// 1. Mở rộng 'globalThis' để thêm 'zaloEmitter' (cho TypeScript)
+const customGlobal = globalThis as typeof globalThis & {
+  zaloEmitter: EventEmitter;
+};
+
+// 2. Khởi tạo Singleton cho Emitter
+// Nếu instance chưa tồn tại trên globalThis, tạo nó.
+if (!customGlobal.zaloEmitter) {
+  console.log(
+    "[Global] Đang khởi tạo globalZaloEmitter (Singleton) lần đầu...",
+  );
+  customGlobal.zaloEmitter = new EventEmitter();
+  // Tăng giới hạn listener mặc định (10) đề phòng nhiều tab/kết nối SSE
+  customGlobal.zaloEmitter.setMaxListeners(50);
+}
+
+// 3. Luôn export instance toàn cục (global)
 // Đây là instance duy nhất sẽ được chia sẻ
-export const globalZaloEmitter = new EventEmitter();
+export const globalZaloEmitter = customGlobal.zaloEmitter;
+
+// --- Kết thúc sửa lỗi kiến trúc ---
 
 // Định nghĩa các loại sự kiện để nhất quán
 export const ZALO_EVENTS = {
