@@ -24,6 +24,7 @@ import {
   getAccountInfoAction,
   getThreadsAction,
   setEchoBotStateAction,
+  logoutAction, // THÊM MỚI
 } from "./actions";
 
 // --- Định nghĩa Types (Không đổi) ---
@@ -160,6 +161,58 @@ const IconClose = ({ className }: { className: string }) => (
       d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z"
       clipRule="evenodd"
     />
+  </svg>
+);
+const IconRefresh = ({
+  className,
+  isSpinning = false,
+}: {
+  className: string;
+  isSpinning?: boolean;
+}) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={1.5}
+    stroke="currentColor"
+    className={`${className} ${isSpinning ? "animate-spin" : ""}`}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+    />
+  </svg>
+);
+const IconMenuToggle = ({
+  className,
+  isExpanded = false,
+}: {
+  className: string;
+  isExpanded?: boolean;
+}) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={1.5}
+    stroke="currentColor"
+    className={className}
+  >
+    {isExpanded ? (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"
+      />
+    ) : (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5"
+      />
+    )}
   </svg>
 );
 
@@ -370,30 +423,120 @@ function MainMenu({
   accountInfo,
   onCopyToken,
   isCopying,
+  isExpanded,
+  onToggleMenu,
+  onLogout,
+  onFetchAccountInfo,
+  isLoadingAccountInfo,
 }: {
   accountInfo: AccountInfo | null;
   onCopyToken: () => void;
   isCopying: boolean;
+  isExpanded: boolean;
+  onToggleMenu: () => void;
+  onLogout: () => void;
+  onFetchAccountInfo: () => void;
+  isLoadingAccountInfo: boolean;
 }) {
   return (
-    <div className="flex h-full w-16 flex-col items-center gap-6 bg-gray-900 py-4">
-      {accountInfo ? (
-        <Avatar src={accountInfo.avatar} alt={accountInfo.displayName} />
-      ) : (
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700">
-          <IconUser className="h-6 w-6 text-gray-400" />
-        </div>
-      )}
-      <div className="flex h-full flex-col justify-between">
+    <div
+      className={`flex h-full flex-col bg-gray-900 py-4 transition-all duration-300 ease-in-out ${
+        isExpanded ? "w-64" : "w-16"
+      }`}
+    >
+      {/* 1. Profile */}
+      <div
+        className={`flex items-center gap-3 px-4 ${
+          !isExpanded ? "justify-center" : ""
+        }`}
+      >
+        {accountInfo ? (
+          <Avatar src={accountInfo.avatar} alt={accountInfo.displayName} />
+        ) : (
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700">
+            <IconUser className="h-6 w-6 text-gray-400" />
+          </div>
+        )}
+        {isExpanded && accountInfo && (
+          <div className="flex-1 overflow-hidden">
+            <h3 className="truncate font-semibold text-white">
+              {accountInfo.displayName}
+            </h3>
+            <p className="truncate text-xs text-gray-400">
+              ID: {accountInfo.userId}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 2. Các Nút Chức năng (Hiển thị đầy đủ khi mở rộng) */}
+      <div className="mt-8 flex-1 space-y-2 px-3">
+        {/* --- Nút Tải lại --- */}
+        <button
+          onClick={onFetchAccountInfo}
+          disabled={isLoadingAccountInfo}
+          className="flex w-full items-center gap-3 rounded-lg p-3 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-wait disabled:opacity-50"
+          title="Tải lại Thông tin"
+        >
+          <IconRefresh
+            className="h-6 w-6 flex-shrink-0"
+            isSpinning={isLoadingAccountInfo}
+          />
+          {isExpanded && (
+            <span className="flex-1">
+              {isLoadingAccountInfo ? "Đang tải lại..." : "Tải lại Thông tin"}
+            </span>
+          )}
+        </button>
+
+        {/* --- Nút Copy Session --- */}
         <button
           onClick={onCopyToken}
           disabled={isCopying}
-          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
+          className="flex w-full items-center gap-3 rounded-lg p-3 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-wait disabled:opacity-50"
           title={
             isCopying ? "Đang lấy token..." : "Sao chép (Copy) Session Token"
           }
         >
-          <IconLogout className="h-6 w-6" />
+          <svg // Icon: Document Copy (Sao chép)
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="h-6 w-6 flex-shrink-0"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.438-3.43-8.161-7.759-8.404a.75.75 0 00-.517.22c-.114.113-.223.238-.323.364M11.25 12.75H9v-2.625M11.25 12.75c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125H9v-2.25c0-.621.504-1.125 1.125-1.125z"
+            />
+          </svg>
+
+          {isExpanded && (
+            <span className="flex-1">
+              {isCopying ? "Đang lấy..." : "Sao chép Session"}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={onLogout}
+          className="flex w-full items-center gap-3 rounded-lg p-3 text-left text-sm text-red-400 transition-colors hover:bg-red-800 hover:text-red-300"
+          title="Đăng xuất"
+        >
+          <IconLogout className="h-6 w-6 flex-shrink-0" />
+          {isExpanded && <span className="flex-1">Đăng xuất</span>}
+        </button>
+      </div>
+      <div className="mt-auto px-3">
+        <button
+          onClick={onToggleMenu}
+          className={`flex w-full items-center gap-3 rounded-lg p-3 text-left text-sm text-gray-400 transition-colors hover:bg-gray-700 hover:text-white ${
+            !isExpanded ? "justify-center" : ""
+          }`}
+          title={isExpanded ? "Thu gọn menu" : "Mở rộng menu"}
+        >
+          <IconMenuToggle className="h-6 w-6" isExpanded={isExpanded} />
         </button>
       </div>
     </div>
@@ -767,6 +910,10 @@ export default function BotControlPanel() {
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [isEchoBotEnabled, setIsEchoBotEnabled] = useState(false);
 
+  // THÊM MỚI: Trạng thái Module 1
+  const [isMenuExpanded, setIsMenuExpanded] = useState(false);
+  const [isLoadingAccountInfo, setIsLoadingAccountInfo] = useState(false);
+
   // Trạng thái UI
   const [searchTerm, setSearchTerm] = useState("");
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
@@ -816,6 +963,8 @@ export default function BotControlPanel() {
 
   const handleFetchAccountInfo = async () => {
     console.log("[UI] Đang tải thông tin tài khoản...");
+    setIsLoadingAccountInfo(true); // Bật loading
+    setErrorMessage(null); // Xóa lỗi cũ
     try {
       const info = await getAccountInfoAction();
       // --- DEBUG LOG (THEO YÊU CẦU) ---
@@ -829,6 +978,8 @@ export default function BotControlPanel() {
       const errorMsg =
         err instanceof Error ? err.message : "Lỗi không xác định";
       setErrorMessage(`Lỗi tải thông tin tài khoản: ${errorMsg}`);
+    } finally {
+      setIsLoadingAccountInfo(false); // Tắt loading
     }
   };
 
@@ -857,9 +1008,24 @@ export default function BotControlPanel() {
       switch (eventName) {
         case ZALO_EVENTS.STATUS_UPDATE:
           if (data && typeof data === "object" && "loginState" in data) {
-            setLoginState(
-              (data as { loginState: LoginState }).loginState || "IDLE",
-            );
+            const newLoginState = (data as { loginState: LoginState })
+              .loginState;
+            setLoginState(newLoginState || "IDLE");
+
+            // QUAN TRỌNG: Xử lý khi nhận được tin logout từ server
+            if (newLoginState === "IDLE" || newLoginState === "ERROR") {
+              console.log(
+                "[SSE] Nhận trạng thái IDLE/ERROR từ server, đang reset UI...",
+              );
+              setAccountInfo(null);
+              setThreads([]);
+              setMessages([]);
+              setSelectedThread(null);
+              setQrCode(null);
+              setIsSending(false);
+              setSessionTokenForCopy(null);
+            }
+
             if (
               "error" in data &&
               data.error &&
@@ -987,6 +1153,24 @@ export default function BotControlPanel() {
       setErrorMessage(`Lỗi đăng nhập token: ${errorMsg}`);
       setIsSending(false);
     }
+  };
+  const handleLogout = async () => {
+    console.log("[UI] Yêu cầu đăng xuất...");
+    setErrorMessage(null);
+
+    // 1. Reset trạng thái client ngay lập tức (UI mượt hơn)
+    // (SSE cũng sẽ làm điều này, nhưng làm trước sẽ nhanh hơn)
+    setLoginState("IDLE"); // Chuyển về màn hình đăng nhập
+    setAccountInfo(null);
+    setThreads([]);
+    setMessages([]);
+    setSelectedThread(null);
+    setQrCode(null);
+    setIsSending(false);
+    setSessionTokenForCopy(null);
+
+    // 2. Gọi Server Action (không cần await, chạy nền)
+    logoutAction();
   };
 
   const handleCopyToken = async () => {
@@ -1117,6 +1301,11 @@ export default function BotControlPanel() {
         accountInfo={accountInfo}
         onCopyToken={handleCopyToken}
         isCopying={isCopying}
+        isExpanded={isMenuExpanded}
+        onToggleMenu={() => setIsMenuExpanded(!isMenuExpanded)}
+        onLogout={handleLogout}
+        onFetchAccountInfo={handleFetchAccountInfo}
+        isLoadingAccountInfo={isLoadingAccountInfo}
       />
 
       {/* Module 2: Conversation List */}

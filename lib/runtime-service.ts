@@ -578,4 +578,34 @@ export class ZaloSingletonService {
       }`,
     );
   }
+  /**
+   * THÊM MỚI: Phương thức Đăng xuất
+   * CẬP NHẬT: Mô phỏng logout (thay vì gọi API) bằng cách
+   * hủy instance 'api' và reset trạng thái (theo yêu cầu).
+   */
+  public logout(): void {
+    // SỬA ĐỔI: Bỏ async, vì chúng ta không await bất cứ thứ gì.
+    if (this.loginState !== "LOGGED_IN" || !this.api) {
+      console.warn("[Service] Yêu cầu logout khi chưa đăng nhập.");
+      // Vẫn reset về IDLE để đảm bảo đồng bộ
+      this.loginState = "IDLE";
+      this.api = null;
+      globalZaloEmitter.emit(ZALO_EVENTS.STATUS_UPDATE, this.getStatus());
+      return;
+    }
+
+    console.log("[Service] Bắt đầu quá trình đăng xuất (mô phỏng)...");
+
+    // 3. Reset trạng thái service về ban đầu
+    this.api = null;
+    this.loginState = "IDLE";
+    this.loginError = null;
+    this.isEchoBotEnabled = false; // Reset bot nhại
+    console.log(
+      "[Service] Trạng thái đã được reset về IDLE. API instance đã bị hủy.",
+    );
+
+    // 4. Phát sự kiện cho UI
+    globalZaloEmitter.emit(ZALO_EVENTS.STATUS_UPDATE, this.getStatus());
+  }
 }

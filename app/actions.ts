@@ -135,3 +135,16 @@ export async function setEchoBotStateAction(isEnabled: boolean) {
   // Đây là lệnh 'void', không cần try/catch trừ khi muốn báo lỗi về UI
   ZaloSingletonService.getInstance().setEchoBotState(isEnabled);
 }
+
+/**
+ * THÊM MỚI: Action Đăng xuất
+ */
+export async function logoutAction() {
+  console.log("[Action] Yêu cầu logoutAction...");
+  try {
+    await ZaloSingletonService.getInstance().logout();
+  } catch (error) {
+    console.error("[Action Error] logoutAction:", error);
+    // Không cần ném lỗi về, vì UI sẽ reset dựa trên sự kiện SSE
+  }
+}
