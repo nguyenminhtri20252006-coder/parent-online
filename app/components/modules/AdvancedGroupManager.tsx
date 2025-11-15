@@ -167,15 +167,27 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  // THÊM MỚI: State riêng cho lỗi phân quyền
+  const [permissionError, setPermissionError] = useState<string | null>(null);
 
   const fetchPendingMembers = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setPermissionError(null); // Reset lỗi quyền khi tải lại
     try {
       const data = await getPendingGroupMembersAction(thread.id);
       setPending(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Lỗi không xác định");
+      // SỬA ĐỔI: Phân loại lỗi
+      const errorMessage =
+        err instanceof Error ? err.message : "Lỗi không xác định";
+      if (errorMessage.includes("Permission Denied")) {
+        // Lỗi phân quyền -> set state riêng
+        setPermissionError(errorMessage);
+      } else {
+        // Lỗi khác -> set state lỗi chung
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -196,7 +208,14 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
       // Tải lại danh sách sau khi duyệt
       fetchPendingMembers();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Lỗi duyệt thành viên");
+      // SỬA ĐỔI: Phân loại lỗi (cho an toàn, dù hàm này cũng đã có guard)
+      const errorMessage =
+        err instanceof Error ? err.message : "Lỗi duyệt thành viên";
+      if (errorMessage.includes("Permission Denied")) {
+        setPermissionError(errorMessage);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setIsProcessing((prev) => ({ ...prev, [memberId]: false }));
     }
@@ -208,58 +227,69 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
         <IconClock className="h-5 w-5" />
         Thành viên chờ duyệt
       </h3>
-      <button
-        onClick={fetchPendingMembers}
-        disabled={isLoading}
-        className="my-2 flex items-center justify-center gap-2 rounded-md bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-500 disabled:opacity-50"
-      >
-        <IconRefresh className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-        Làm mới
-      </button>
 
-      {isLoading && !pending && (
-        <p className="mt-2 text-sm text-gray-400">Đang tải...</p>
-      )}
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {/* THÊM MỚI: Render có điều kiện cho Lỗi Quyền */}
+      {permissionError ? (
+        <PermissionDeniedMessage message={permissionError} />
+      ) : (
+        <>
+          {/* Gói toàn bộ UI cũ vào trong <> ... </> */}
+          <button
+            onClick={fetchPendingMembers}
+            disabled={isLoading}
+            className="my-2 flex items-center justify-center gap-2 rounded-md bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-500 disabled:opacity-50"
+          >
+            <IconRefresh
+              className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+            />
+            Làm mới
+          </button>
 
-      {pending && (
-        <div className="mt-2 space-y-2">
-          {pending.users.length === 0 ? (
-            <p className="text-sm text-gray-400">Không có ai chờ duyệt.</p>
-          ) : (
-            pending.users.map((user) => (
-              <div
-                key={user.uid}
-                className="flex items-center gap-2 rounded-md bg-gray-800 p-2"
-              >
-                <img
-                  src={user.avatar}
-                  alt={user.dpn}
-                  className="h-8 w-8 rounded-full"
-                />
-                <span className="flex-1 truncate text-sm text-gray-300">
-                  {user.dpn}
-                </span>
-                <button
-                  onClick={() => handleReview(user.uid, false)}
-                  disabled={isProcessing[user.uid]}
-                  title="Từ chối"
-                  className="rounded-full bg-red-600 p-1 text-white hover:bg-red-700 disabled:opacity-50"
-                >
-                  <IconClose className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleReview(user.uid, true)}
-                  disabled={isProcessing[user.uid]}
-                  title="Chấp nhận"
-                  className="rounded-full bg-green-600 p-1 text-white hover:bg-green-700 disabled:opacity-50"
-                >
-                  <IconCheck className="h-4 w-4" />
-                </button>
-              </div>
-            ))
+          {isLoading && !pending && (
+            <p className="mt-2 text-sm text-gray-400">Đang tải...</p>
           )}
-        </div>
+          {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+
+          {pending && (
+            <div className="mt-2 space-y-2">
+              {pending.users.length === 0 ? (
+                <p className="text-sm text-gray-400">Không có ai chờ duyệt.</p>
+              ) : (
+                pending.users.map((user) => (
+                  <div
+                    key={user.uid}
+                    className="flex items-center gap-2 rounded-md bg-gray-800 p-2"
+                  >
+                    <img
+                      src={user.avatar}
+                      alt={user.dpn}
+                      className="h-8 w-8 rounded-full"
+                    />
+                    <span className="flex-1 truncate text-sm text-gray-300">
+                      {user.dpn}
+                    </span>
+                    <button
+                      onClick={() => handleReview(user.uid, false)}
+                      disabled={isProcessing[user.uid]}
+                      title="Từ chối"
+                      className="rounded-full bg-red-600 p-1 text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      <IconClose className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleReview(user.uid, true)}
+                      disabled={isProcessing[user.uid]}
+                      title="Chấp nhận"
+                      className="rounded-full bg-green-600 p-1 text-white hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <IconCheck className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
