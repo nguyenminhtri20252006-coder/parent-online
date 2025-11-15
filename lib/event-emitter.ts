@@ -6,6 +6,8 @@
  * giao tiếp với nhau trong cùng một tiến trình Node.js.
  */
 import { EventEmitter } from "events";
+// SỬA ĐỔI: Nhập hằng số từ tệp types
+import { ZALO_EVENTS } from "@/lib/types/zalo.types";
 
 // --- SỬA LỖI KIẾN TRÚC: Đảm bảo Singleton trong môi trường Next.js ---
 
@@ -31,18 +33,9 @@ export const globalZaloEmitter = customGlobal.zaloEmitter;
 
 // --- Kết thúc sửa lỗi kiến trúc ---
 
-// Định nghĩa các loại sự kiện để nhất quán
-export const ZALO_EVENTS = {
-  // Sự kiện khi QR được tạo (gửi QR base64)
-  QR_GENERATED: "qr_generated",
-  // Sự kiện khi đăng nhập thành công
-  LOGIN_SUCCESS: "login_success",
-  // Sự kiện khi đăng nhập thất bại
-  LOGIN_FAILURE: "login_failure",
-  // Sự kiện khi có tin nhắn mới (gửi payload tin nhắn)
-  NEW_MESSAGE: "new_message",
-  // Báo cáo trạng thái chung
-  STATUS_UPDATE: "status_update",
-  // THÊM MỚI: Sự kiện khi session (token) được tạo/sẵn sàng
-  SESSION_GENERATED: "session_generated",
-};
+// XÓA: Di chuyển định nghĩa ZALO_EVENTS sang tệp types
+// export const ZALO_EVENTS = { ... };
+
+// THÊM MỚI: Export lại ZALO_EVENTS từ tệp types để các tệp khác
+// (như zalo-events/route.ts) không bị lỗi import
+export { ZALO_EVENTS };

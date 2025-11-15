@@ -1,0 +1,171 @@
+"use client";
+
+/**
+ * app/components/modules/ChatFrame.tsx
+ *
+ * Module 3: Khung chat chính
+ */
+import { useState, useRef, useEffect, FormEvent, ChangeEvent } from "react";
+import { ThreadInfo, ZaloMessage } from "@/lib/types/zalo.types";
+import { Avatar } from "@/app/components/ui/Avatar";
+import { IconInfo, IconSend } from "@/app/components/ui/Icons";
+
+export function ChatFrame({
+  thread,
+  messages,
+  onSendMessage,
+  onToggleDetails,
+  isEchoBotEnabled,
+  onToggleEchoBot,
+}: {
+  thread: ThreadInfo | null;
+  messages: ZaloMessage[];
+  onSendMessage: (content: string) => Promise<void>;
+  onToggleDetails: () => void;
+  isEchoBotEnabled: boolean;
+  onToggleEchoBot: (e: ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const [messageContent, setMessageContent] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Tự cuộn xuống khi có tin nhắn mới
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleFormSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!messageContent || isSending || !thread) return;
+
+    setIsSending(true);
+    await onSendMessage(messageContent);
+    setMessageContent("");
+    setIsSending(false);
+  };
+
+  const renderMessageContent = (msg: ZaloMessage) => {
+    if (typeof msg.data.content === "string") {
+      return msg.data.content;
+    }
+    if (typeof msg.data.content === "object" && msg.data.content !== null) {
+      if ("type" in msg.data.content && msg.data.content.type === "sticker") {
+        return "[Hình dán Sticker]";
+      }
+      return `[Nội dung đa phương tiện: ${Object.keys(msg.data.content).join(
+        ", ",
+      )}]`;
+    }
+    return "[Nội dung không xác định]";
+  };
+
+  if (!thread) {
+    return (
+      <div className="flex h-full flex-1 items-center justify-center bg-gray-800">
+        <p className="text-gray-500">Chọn một hội thoại để bắt đầu</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-1 flex-col bg-gray-800">
+      {/* Header Khung Chat */}
+      <header className="flex items-center justify-between border-b border-gray-700 p-4">
+        <div className="flex items-center gap-3">
+          <Avatar
+            src={thread.avatar}
+            alt={thread.name}
+            isGroup={thread.type === 1}
+          />
+          <div>
+            <h2 className="text-lg font-bold text-white">{thread.name}</h2>
+            <p className="text-sm text-green-400">Đang hoạt động</p>
+          </div>
+        </div>
+        <button
+          onClick={onToggleDetails}
+          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
+          title="Thông tin hội thoại"
+        >
+          <IconInfo className="h-6 w-6" />
+        </button>
+      </header>
+
+      {/* Khung Log Tin nhắn */}
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        {messages.map((msg, index) => (
+          <div
+            key={msg.data.ts + index}
+            className={`flex max-w-lg flex-col ${
+              msg.isSelf ? "ml-auto items-end" : "mr-auto items-start"
+            }`}
+          >
+            <span className="text-xs text-gray-400">{msg.data.dName}</span>
+            <div
+              className={`mt-1 rounded-lg p-3 ${
+                msg.isSelf
+                  ? "rounded-br-none bg-blue-700"
+                  : "rounded-bl-none bg-gray-700"
+              }`}
+            >
+              <p className="whitespace-pre-wrap break-words text-white">
+                {renderMessageContent(msg)}
+              </p>
+            </div>
+            <span className="mt-1 text-xs text-gray-500">
+              {new Date(parseInt(msg.data.ts, 10)).toLocaleTimeString()}
+            </span>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Form Gửi tin */}
+      <footer className="border-t border-gray-700 p-4">
+        <form onSubmit={handleFormSubmit} className="flex items-center gap-3">
+          <textarea
+            value={messageContent}
+            onChange={(e) => setMessageContent(e.target.value)}
+            placeholder="Viết tin nhắn..."
+            rows={1}
+            className="flex-1 resize-none rounded-lg border border-gray-600 bg-gray-700 p-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleFormSubmit(e);
+              }
+            }}
+          />
+          <button
+            type="submit"
+            disabled={isSending || !messageContent}
+            className="rounded-lg bg-blue-600 p-3 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <IconSend className="h-6 w-6" />
+          </button>
+        </form>
+        {/* Công tắc Bot Nhại */}
+        <div className="border-t border-gray-700 pt-3 mt-3">
+          <label
+            htmlFor="echo-toggle"
+            className="flex items-center justify-between cursor-pointer"
+          >
+            <span className="text-sm font-medium text-gray-300">
+              Bật Bot Nhại Lại (Echo Bot)
+            </span>
+            <div className="relative inline-flex items-center">
+              <input
+                type="checkbox"
+                id="echo-toggle"
+                className="sr-only peer"
+                checked={isEchoBotEnabled}
+                onChange={onToggleEchoBot}
+              />
+              <div className="peer h-6 w-11 rounded-full bg-gray-600 after:absolute after:top-0.5 after:left-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:content[''] after:transition-all peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-blue-500"></div>
+            </div>
+          </label>
+        </div>
+      </footer>
+    </div>
+  );
+}

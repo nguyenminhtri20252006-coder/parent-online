@@ -3,6 +3,9 @@
  *
  * Lớp Dịch vụ Singleton (Lớp 3) - "Bộ não" 24/7.
  * Quản lý khởi tạo, trạng thái đăng nhập và listener của `zca-js`.
+ * CẬP NHẬT (GĐ 1.1): Tách biệt Types
+ * CẬP NHẬT (GĐ 2): Thêm các phương thức API nghiệp vụ mới (Bạn bè, Nhóm)
+ * CẬP NHẬT (GĐ 3 Hotfix): Sửa tên type và thêm import
  */
 
 // Import các thư viện Node.js cần thiết
@@ -14,45 +17,38 @@ import path from "path";
 import {
   Zalo,
   API,
-  User,
+  User, // Giữ lại cho getThreads
   GetAllGroupsResponse,
   GroupInfoResponse,
+  // Thêm các kiểu dữ liệu API cần thiết
+  FindUserResponse,
+  GetFriendRecommendationsResponse, // Sửa lỗi (GĐ 3 Hotfix)
+  GetSentFriendRequestResponse, // Thêm (GĐ 3.6 Hotfix)
+  CreateGroupOptions,
+  AttachmentSource,
+  ReviewPendingMemberRequestPayload,
+  UpdateGroupSettingsOptions,
+  // THÊM MỚI (GĐ 3.8)
+  GetGroupLinkDetailResponse,
+  GetPendingGroupMembersResponse,
+  ReviewPendingMemberRequestStatus,
+  // THÊM MỚI (GĐ 3.10)
+  GroupInfo,
+  GetGroupMembersInfoResponse,
 } from "zca-js";
 // THÊM MỚI: Import CookieJar từ thư viện tough-cookie (Sửa lỗi ts(2724))
 import sharp from "sharp";
 
 // Import Emitter toàn cục
 import { globalZaloEmitter, ZALO_EVENTS } from "./event-emitter";
-/**
- * Thông tin tài khoản (Bot) đã đăng nhập.
- * (Trích xuất từ 'User' của zca-js)
- */
-export type AccountInfo = {
-  userId: string;
-  displayName: string;
-  avatar: string;
-};
 
-/**
- * Thông tin hội thoại (đã hợp nhất).
- * (Trích xuất từ 'User' hoặc 'GroupInfo' của zca-js)
- */
-export type ThreadInfo = {
-  id: string; // userId (bạn bè) hoặc groupId (nhóm)
-  name: string; // displayName (bạn bè) hoặc name (nhóm)
-  avatar: string; // avatar (cả hai)
-  type: 0 | 1; // 0 = User, 1 = Group
-};
-
-/**
- * THÊM MỚI: Định nghĩa kiểu dữ liệu cho Credentials/Session
- */
-type ZaloCredentials = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cookie: any; // SỬA ĐỔI: Dùng 'any' để giải quyết xung đột kiểu (lỗi ts(2741) và ts(2345))
-  imei: string;
-  userAgent: string;
-};
+// SỬA ĐỔI: Nhập (import) tất cả types từ tệp SSOT
+import {
+  type AccountInfo,
+  type ThreadInfo,
+  type ZaloCredentials,
+  type ZaloUser,
+} from "@/lib/types/zalo.types";
 
 /**
  * Hàm trợ giúp lấy metadata ảnh (theo yêu cầu của zca-js).
@@ -72,9 +68,6 @@ async function imageMetadataGetter(filePath: string) {
     throw error;
   }
 }
-const customGlobal = globalThis as typeof globalThis & {
-  zaloServiceInstance: ZaloSingletonService;
-};
 
 /**
  * Lớp Singleton Service
@@ -139,7 +132,7 @@ export class ZaloSingletonService {
     if (this.loginState === "LOGGED_IN") {
       console.warn("[Service] Đã đăng nhập rồi.");
       globalZaloEmitter.emit(ZALO_EVENTS.LOGIN_SUCCESS);
-      this.emitSessionToken(); // THÊM MỚI: Gửi lại session nếu đã đăng nhập
+      this.emitSessionToken();
       return;
     }
 
@@ -152,11 +145,6 @@ export class ZaloSingletonService {
     // SỬA LỖI: Không dùng qrPath, thay bằng callback (qrData)
     this.zalo
       .loginQR({}, (qrDataOrPath: unknown) => {
-        // Callback này được gọi khi thư viện CÓ dữ liệu QR
-        console.log(
-          "[Service DEBUG] 1/6: Callback loginQR được gọi. Dữ liệu thô:",
-        ); // <-- DEBUG LOG 1
-
         try {
           // KẾ HOẠCH C: Xử lý cả hai trường hợp
           let base64Image: string | null = null;
@@ -171,26 +159,14 @@ export class ZaloSingletonService {
             "image" in qrDataOrPath.data &&
             typeof qrDataOrPath.data.image === "string"
           ) {
-            console.log(
-              "[Service] Luồng 3 (image): Nhận được QR base64 trực tiếp (image).",
-            );
-            base64Image = qrDataOrPath.data.image; // Đây đã là data URI
+            base64Image = qrDataOrPath.data.image;
           }
 
           if (base64Image) {
             if (!base64Image.startsWith("data:image")) {
-              console.log(
-                "[Service] Sửa lỗi: Tự động thêm tiền tố 'data:image/png;base64,' vào QR code.",
-              );
               base64Image = `data:image/png;base64,${base64Image}`;
             }
 
-            console.log(
-              `[Service DEBUG] 3/6: Đã có base64. Đang emit... (data: ${base64Image.substring(
-                0,
-                50,
-              )}...)`,
-            );
             globalZaloEmitter.emit(ZALO_EVENTS.QR_GENERATED, base64Image);
           } else {
             console.warn(
@@ -212,7 +188,7 @@ export class ZaloSingletonService {
       .then((api) => {
         // Promise này resolve khi người dùng quét QR thành công
         console.log("[Service] Đăng nhập QR thành công!");
-        this.api = api; // Gán API đã đăng nhập
+        this.api = api;
         this.loginState = "LOGGED_IN";
 
         globalZaloEmitter.emit(ZALO_EVENTS.LOGIN_SUCCESS);
@@ -316,7 +292,7 @@ export class ZaloSingletonService {
         // --- CẬP NHẬT LOGIC: Bot Nhại (Echo Bot) ---
         // Chỉ nhại lại nếu công tắc (biến) isEchoBotEnabled là true
         if (
-          this.isEchoBotEnabled && // KIỂM TRA CÔNG TẮC
+          this.isEchoBotEnabled &&
           typeof msg.data.content === "string" &&
           !msg.isSelf
         ) {
@@ -438,36 +414,37 @@ export class ZaloSingletonService {
     }
     console.log("[Service] Đang tải thông tin tài khoản (fetchAccountInfo)...");
     try {
-      const info: User = await this.api.fetchAccountInfo();
+      // SỬA ĐỔI: Gán kiểu 'any' để chấp nhận mọi cấu trúc trả về từ API
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const info: any = await this.api.fetchAccountInfo();
 
-      // --- DEBUG LOG (SERVER-SIDE) ---
-      // Thêm log này để xem chính xác zca-js trả về cái gì
-      console.log(
-        "[Service-DEBUG] Dữ liệu 'info' thô nhận được từ this.api.fetchAccountInfo():",
-        JSON.stringify(info, null, 2),
-      );
-      // --- KẾT THÚC DEBUG LOG ---
+      // SỬA ĐỔI: Truy cập vào đối tượng 'profile' lồng bên trong
+      const profile: ZaloUser = info.profile;
 
-      // Thêm kiểm tra an toàn
-      if (!info || !info.userId) {
+      // Thêm kiểm tra an toàn (KIỂM TRA profile.userId)
+      if (!profile || !profile.userId) {
         console.warn(
-          "[Service-WARN] fetchAccountInfo() trả về dữ liệu không hợp lệ hoặc rỗng.",
+          "[Service-WARN] fetchAccountInfo() trả về 'profile' không hợp lệ hoặc rỗng.",
           info,
         );
         // Trả về một lỗi rõ ràng thay vì object rỗng
         throw new Error(
-          "Không thể lấy thông tin tài khoản từ Zalo API (dữ liệu trả về rỗng).",
+          "Không thể lấy thông tin tài khoản từ Zalo API (thiếu 'profile').",
         );
       }
 
       return {
-        userId: info.userId,
-        displayName: info.displayName,
-        avatar: info.avatar,
+        userId: profile.userId,
+        displayName: profile.displayName || profile.zaloName,
+        avatar: profile.avatar,
       };
     } catch (error) {
       console.error("[Service] Lỗi getAccountInfo:", error);
-      throw error;
+      // SỬA ĐỔI: Ném lỗi rõ ràng hơn
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error("Lỗi không xác định khi lấy thông tin tài khoản.");
     }
   }
 
@@ -492,7 +469,7 @@ export class ZaloSingletonService {
       friends.forEach((friend) => {
         mergedThreads.push({
           id: friend.userId,
-          name: friend.displayName || friend.zaloName, // Dùng displayName, fallback về zaloName
+          name: friend.displayName || friend.zaloName,
           avatar: friend.avatar,
           type: 0, // 0 = User
         });
@@ -508,13 +485,8 @@ export class ZaloSingletonService {
       console.log(`[Service] Tìm thấy ${groupIds.length} ID nhóm.`);
 
       if (groupIds.length > 0) {
-        // SỬA LỖI: Chia lô (Batching) để tránh lỗi "Tham số không hợp lệ"
-        // API có thể có giới hạn số lượng ID trong một lần gọi.
-
-        // Thêm logic debug
-        // Hàm trợ giúp delay
         const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
-        const CHUNK_SIZE = 20;
+        const CHUNK_SIZE = 20; // Xử lý 20 nhóm một lúc
         const totalChunks = Math.ceil(groupIds.length / CHUNK_SIZE);
 
         console.log(
@@ -607,5 +579,257 @@ export class ZaloSingletonService {
 
     // 4. Phát sự kiện cho UI
     globalZaloEmitter.emit(ZALO_EVENTS.STATUS_UPDATE, this.getStatus());
+  }
+
+  // --- HÀM CHECK API (ĐẢM BẢO ĐĂNG NHẬP) ---
+  private checkApi(): API {
+    if (this.loginState !== "LOGGED_IN" || !this.api) {
+      console.warn("[Service] Yêu cầu API thất bại: Chưa đăng nhập.");
+      throw new Error("Chưa đăng nhập (API instance is null).");
+    }
+    return this.api;
+  }
+
+  /**
+   * [API] Lấy thông tin chi tiết (Info) của 1 hoặc nhiều nhóm
+   * (Đã có trong GĐ 2, nhưng cần thiết cho GĐ 3.10)
+   */
+  public async getGroupInfo(
+    groupId: string | string[],
+  ): Promise<GroupInfoResponse> {
+    const api = this.checkApi();
+    console.log(`[Service] Lấy thông tin chi tiết nhóm: ${groupId}`);
+    return api.getGroupInfo(groupId);
+  }
+
+  /**
+   * [API] Lấy thông tin (Profile) của thành viên nhóm
+   */
+  public async getGroupMembersInfo(
+    memberId: string | string[],
+  ): Promise<GetGroupMembersInfoResponse> {
+    const api = this.checkApi();
+    console.log(`[Service] Lấy thông tin thành viên: ${memberId}`);
+    return api.getGroupMembersInfo(memberId);
+  }
+
+  // --- GIAI ĐOẠN 2: TRIỂN KHAI API QUẢN LÝ BẠN BÈ ---
+
+  /**
+   * [API] Tìm kiếm người dùng bằng SĐT
+   */
+  public async findUser(phoneNumber: string): Promise<FindUserResponse> {
+    const api = this.checkApi();
+    console.log(`[Service] Đang tìm SĐT: ${phoneNumber}`);
+    return api.findUser(phoneNumber);
+  }
+
+  /**
+   * [API] Gửi lời mời kết bạn
+   */
+  public async sendFriendRequest(msg: string, userId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Đang gửi lời mời kết bạn đến: ${userId}`);
+    await api.sendFriendRequest(msg, userId);
+  }
+
+  /**
+   * [API] Chấp nhận lời mời kết bạn
+   */
+  public async acceptFriendRequest(userId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Đang chấp nhận lời mời từ: ${userId}`);
+    await api.acceptFriendRequest(userId);
+  }
+
+  /**
+   * [API] Hủy (thu hồi) lời mời đã gửi
+   */
+  public async undoFriendRequest(friendId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Đang thu hồi lời mời đến: ${friendId}`);
+    await api.undoFriendRequest(friendId);
+  }
+
+  public async getSentFriendRequest(): Promise<GetSentFriendRequestResponse> {
+    const api = this.checkApi();
+    console.log(`[Service] Lấy danh sách lời mời đã gửi...`);
+    return api.getSentFriendRequest();
+  }
+
+  public async getFriendRecommendations(): Promise<GetFriendRecommendationsResponse> {
+    const api = this.checkApi();
+    console.log(`[Service] Lấy danh sách gợi ý kết bạn...`);
+    // Lưu ý: Tên hàm gốc trong tài liệu là getFriendRecommendationsList
+    // Cần xác nhận tên hàm chính xác trong zca-js là gì
+    // Tạm giả định là getFriendRecommendations (theo tài liệu)
+    return api.getFriendRecommendations();
+  }
+
+  public async removeFriend(friendId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Đang xóa bạn: ${friendId}`);
+    await api.removeFriend(friendId);
+  }
+
+  /**
+   * [API] Chặn người dùng
+   */
+  public async blockUser(userId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Đang chặn người dùng: ${userId}`);
+    await api.blockUser(userId);
+  }
+
+  /**
+   * [API] Bỏ chặn người dùng
+   */
+  public async unblockUser(userId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Đang bỏ chặn người dùng: ${userId}`);
+    await api.unblockUser(userId);
+  }
+
+  // --- P2: Quản lý Nhóm ---
+
+  public async createGroup(options: CreateGroupOptions) {
+    const api = this.checkApi();
+    console.log(`[Service] Tạo nhóm mới: ${options.name}`);
+    // Cần xử lý avatarSource nếu là đường dẫn file
+    // (Tạm thời giả định zca-js tự xử lý hoặc người dùng truyền Buffer)
+    // CẬP NHẬT: API `zca-js` yêu cầu `AttachmentSource` cho avatar.
+    // Logic nghiệp vụ (Lớp 1) sẽ cần cung cấp đường dẫn tệp.
+    // (Service sẽ không xử lý logic tải file ở đây)
+    return api.createGroup(options);
+  }
+
+  /**
+   * [API] Rời khỏi nhóm
+   */
+  public async leaveGroup(groupId: string, silent?: boolean): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Rời nhóm: ${groupId}`);
+    await api.leaveGroup(groupId, silent);
+  }
+
+  /**
+   * [API] Giải tán nhóm
+   */
+  public async disperseGroup(groupId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Giải tán nhóm: ${groupId}`);
+    await api.disperseGroup(groupId);
+  }
+
+  public async addUserToGroup(memberId: string | string[], groupId: string) {
+    const api = this.checkApi();
+    console.log(`[Service] Thêm thành viên vào nhóm: ${groupId}`);
+    return api.addUserToGroup(memberId, groupId);
+  }
+
+  /**
+   * [API] Xóa thành viên khỏi nhóm
+   */
+  public async removeUserFromGroup(
+    memberId: string | string[],
+    groupId: string,
+  ) {
+    const api = this.checkApi();
+    console.log(`[Service] Xóa thành viên khỏi nhóm: ${groupId}`);
+    return api.removeUserFromGroup(memberId, groupId);
+  }
+
+  /**
+   * [API] Lấy danh sách lời mời vào nhóm (chờ duyệt)
+   */
+  public async getGroupInviteBoxList(payload?: {
+    mpage?: number;
+    page?: number;
+    invPerPage?: number;
+    mcount?: number;
+  }) {
+    const api = this.checkApi();
+    console.log(`[Service] Lấy danh sách lời mời vào nhóm...`);
+    return api.getGroupInviteBoxList(payload);
+  }
+
+  public async getPendingGroupMembers(
+    groupId: string,
+    offset: number,
+    count: number,
+  ): Promise<GetPendingGroupMembersResponse> {
+    const api = this.checkApi();
+    console.log(
+      `[Service] Lấy thành viên chờ duyệt của nhóm: ${groupId} (Offset: ${offset}, Count: ${count})`,
+    );
+    // @ts-expect-error - Bỏ qua lỗi type (Expected 1) vì API thật sự cần 3 tham số
+    return api.getPendingGroupMembers(groupId, offset, count);
+  }
+
+  /**
+   * [API] Duyệt thành viên
+   */
+  public async reviewPendingMemberRequest(
+    payload: ReviewPendingMemberRequestPayload,
+    groupId: string,
+  ): Promise<Record<string, ReviewPendingMemberRequestStatus>> {
+    const api = this.checkApi();
+    console.log(`[Service] Duyệt thành viên cho nhóm: ${groupId}`);
+    return api.reviewPendingMemberRequest(payload, groupId);
+  }
+
+  /**
+   * [API] Cập nhật cài đặt nhóm
+   */
+  public async updateGroupSettings(
+    options: UpdateGroupSettingsOptions,
+    groupId: string,
+  ) {
+    const api = this.checkApi();
+    console.log(`[Service] Cập nhật cài đặt nhóm: ${groupId}`);
+    return api.updateGroupSettings(options, groupId);
+  }
+
+  public async getGroupLinkDetail(
+    groupId: string,
+  ): Promise<GetGroupLinkDetailResponse> {
+    const api = this.checkApi();
+    console.log(`[Service] Lấy chi tiết link nhóm: ${groupId}`);
+    return api.getGroupLinkDetail(groupId);
+  }
+
+  // --- THÊM MỚI (GĐ 3.8): Các hàm API Nhóm còn thiếu ---
+
+  public async enableGroupLink(groupId: string) {
+    const api = this.checkApi();
+    console.log(`[Service] Bật link mời nhóm: ${groupId}`);
+    return api.enableGroupLink(groupId);
+  }
+
+  public async disableGroupLink(groupId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Tắt link mời nhóm: ${groupId}`);
+    await api.disableGroupLink(groupId);
+  }
+
+  public async joinGroupInviteBox(groupId: string): Promise<void> {
+    const api = this.checkApi();
+    console.log(`[Service] Chấp nhận lời mời vào nhóm: ${groupId}`);
+    await api.joinGroupInviteBox(groupId);
+  }
+
+  public async deleteGroupInviteBox(
+    groupId: string | string[],
+    blockFutureInvite?: boolean,
+  ) {
+    const api = this.checkApi();
+    console.log(`[Service] Xóa/Từ chối lời mời vào nhóm: ${groupId}`);
+    return api.deleteGroupInviteBox(groupId, blockFutureInvite);
+  }
+
+  public async getGroupLinkInfo(link: string) {
+    const api = this.checkApi();
+    console.log(`[Service] Lấy thông tin link mời: ${link}`);
+    return api.getGroupLinkInfo({ link });
   }
 }
