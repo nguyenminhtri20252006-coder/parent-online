@@ -15,12 +15,16 @@ import {
   getSessionTokenAction,
   logoutAction,
 } from "@/lib/actions/auth.actions";
+// SỬA ĐỔI (Lô Cache): Thêm getAllFriendsAction
+import { getAllFriendsAction } from "@/lib/actions/friend.actions";
 import {
   sendMessageAction,
   getAccountInfoAction,
   getThreadsAction,
   setEchoBotStateAction,
 } from "@/lib/actions/chat.actions";
+// THÊM MỚI (Lô Cache): Thêm scanGroupMembersAction
+import { scanGroupMembersAction } from "@/lib/actions/group.actions";
 // THÊM MỚI: Import action từ vựng
 import { sendVocabularyMessageAction } from "@/lib/actions/vocabulary.actions";
 
@@ -32,12 +36,20 @@ import {
   type ThreadInfo,
   type LoginState,
   type ViewState, // (GĐ 3.2)
+  type UserCacheEntry, // THÊM MỚI (Lô Cache)
+  type GroupMemberProfile, // THÊM MỚI (Lô Cache)
+  type User, // THÊM MỚI (Lô Cache)
 } from "@/lib/types/zalo.types";
 
 // Tái cấu trúc (GĐ 1.3): Import các component con
 import { TokenModal } from "@/app/components/ui/TokenModal";
 import { LoginPanel } from "@/app/components/modules/LoginPanel";
 import { BotInterface } from "@/app/components/BotInterface";
+
+/**
+ * Hàm trợ giúp (Lô Cache)
+ */
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Component Chính (Container)
@@ -67,6 +79,14 @@ export default function BotControlPanel() {
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [isEchoBotEnabled, setIsEchoBotEnabled] = useState(false);
 
+  // THÊM MỚI: Trạng thái cho User Cache (Lô 2)
+  const [userCache, setUserCache] = useState<Record<string, UserCacheEntry>>(
+    {},
+  );
+  const [scannedGroups, setScannedGroups] = useState<Set<string>>(new Set());
+  const [isScanningAll, setIsScanningAll] = useState(false);
+  const [scanStatus, setScanStatus] = useState<string>("");
+
   // THÊM MỚI: Trạng thái cho Giai đoạn 3
   const [view, setView] = useState<ViewState>("chat"); // ('chat' | 'manage')
 
@@ -92,7 +112,129 @@ export default function BotControlPanel() {
     );
   }, [threads, searchTerm]);
 
-  // --- Logic Xử lý Dữ liệu (Hàm trợ giúp) ---
+  // THÊM MỚI (Lô Cache): Hàm quét bạn bè (chạy 1 lần)
+  const loadInitialFriends = async () => {
+    console.log("[UI Cache] Đang tải lớp cache cơ sở (Bạn bè)...");
+    try {
+      const friendsList: User[] = await getAllFriendsAction();
+      const friendCache: Record<string, UserCacheEntry> = {};
+
+      friendsList.forEach((friend) => {
+        friendCache[friend.userId] = {
+          id: friend.userId,
+          name: friend.displayName || friend.zaloName,
+          avatar: friend.avatar,
+          isFriend: true,
+          phoneNumber: friend.phoneNumber || null, // Chỉ bạn bè mới có SĐT
+          commonGroups: new Set(), // Sẽ được cập nhật sau
+        };
+      });
+
+      setUserCache(friendCache);
+      console.log(
+        `[UI Cache] Đã tải xong lớp cache cơ sở: ${friendsList.length} bạn bè.`,
+      );
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : "Lỗi không xác định";
+      setErrorMessage(`Lỗi nghiêm trọng khi tải danh sách bạn bè: ${errorMsg}`);
+    }
+  };
+
+  // THÊM MỚI (Lô Cache): Hàm quét 1 nhóm (lười biếng hoặc thủ công)
+  const scanSingleGroup = async (groupId: string, groupName: string) => {
+    if (scannedGroups.has(groupId)) {
+      console.log(`[UI Cache] Bỏ qua nhóm đã quét: ${groupName}`);
+      return; // Đã quét, bỏ qua
+    }
+    console.log(`[UI Cache] Đang quét thành viên nhóm: ${groupName}...`);
+    let profiles: Record<string, GroupMemberProfile> = {};
+    try {
+      profiles = await scanGroupMembersAction(groupId);
+    } catch (e) {
+      console.error(
+        `[UI Cache] Lỗi khi quét nhóm ${groupName} (ID: ${groupId}):`,
+        e,
+      );
+      // Gắn cờ đã quét để không thử lại (tránh lặp lỗi)
+      setScannedGroups((prev) => new Set(prev).add(groupId));
+      return; // Bỏ qua nếu lỗi
+    }
+
+    // Hợp nhất (merge) kết quả vào state
+    setUserCache((prevCache) => {
+      const newCache = { ...prevCache };
+
+      Object.values(profiles).forEach((profile) => {
+        const existingEntry = newCache[profile.id];
+
+        if (existingEntry) {
+          // Người dùng đã tồn tại (có thể là bạn bè) -> Chỉ cập nhật nhóm chung
+          existingEntry.commonGroups.add(groupId);
+          // Cập nhật avatar/tên nếu cần (profile nhóm có thể mới hơn)
+          existingEntry.name = profile.displayName || existingEntry.name;
+          existingEntry.avatar = profile.avatar || existingEntry.avatar;
+        } else {
+          // Người dùng mới (người lạ) -> Thêm mới vào cache
+          newCache[profile.id] = {
+            id: profile.id,
+            name: profile.displayName,
+            avatar: profile.avatar,
+            isFriend: false,
+            phoneNumber: null, // Người lạ không có SĐT
+            commonGroups: new Set([groupId]),
+          };
+        }
+      });
+      return newCache;
+    });
+
+    // Đánh dấu nhóm này là đã quét
+    setScannedGroups((prev) => new Set(prev).add(groupId));
+    console.log(
+      `[UI Cache] Quét xong nhóm: ${groupName}. Tổng cache: ${
+        Object.keys(userCache).length
+      } người.`,
+    );
+  };
+
+  // THÊM MỚI (Lô Cache): Hàm quét thủ công
+  const handleStartManualScan = async () => {
+    if (isScanningAll) return;
+    setIsScanningAll(true);
+    setScanStatus("Bắt đầu quét toàn bộ...");
+    setErrorMessage(null);
+
+    const groupsToScan = threads.filter((t) => t.type === 1);
+    let count = 0;
+
+    for (const group of groupsToScan) {
+      count++;
+      setScanStatus(
+        `(${count}/${groupsToScan.length}) Đang quét: ${group.name}...`,
+      );
+
+      // Chỉ quét nếu nhóm này chưa được quét trước đó
+      if (!scannedGroups.has(group.id)) {
+        await scanSingleGroup(group.id, group.name);
+        // Logic delay 2 giây của bạn
+        setScanStatus(
+          `(${count}/${groupsToScan.length}) Đã quét ${group.name}. Tạm nghỉ 2 giây...`,
+        );
+        await delay(2000);
+      } else {
+        setScanStatus(
+          `(${count}/${groupsToScan.length}) Bỏ qua nhóm đã quét: ${group.name}`,
+        );
+      }
+    }
+
+    setScanStatus(
+      `Hoàn tất! Đã quét ${groupsToScan.length} nhóm. Tổng cache: ${
+        Object.keys(userCache).length
+      } người.`,
+    );
+    setIsScanningAll(false);
+  };
 
   const handleFetchThreads = async () => {
     console.log("[UI] Đang tải danh sách hội thoại...");
@@ -183,6 +325,10 @@ export default function BotControlPanel() {
               setIsLoggingIn(false); // SỬA ĐỔI: Đổi tên
               setSessionTokenForCopy(null);
               setView("chat"); // Reset view về chat
+              setUserCache({});
+              setScannedGroups(new Set());
+              setIsScanningAll(false);
+              setScanStatus("");
             }
 
             if (
@@ -207,6 +353,7 @@ export default function BotControlPanel() {
           setTokenInput("");
           handleFetchAccountInfo();
           handleFetchThreads();
+          loadInitialFriends();
           break;
         case ZALO_EVENTS.LOGIN_FAILURE:
           const errorMsg =
@@ -285,6 +432,18 @@ export default function BotControlPanel() {
       eventSourceRef.current = null;
     };
   }, []); // Chỉ chạy 1 lần
+
+  // THÊM MỚI (Lô Cache): useEffect cho "Lazy Scan"
+  useEffect(() => {
+    // Chỉ chạy "lazy scan" nếu:
+    // 1. Đã chọn 1 thread
+    // 2. Thread đó là nhóm
+    // 3. Chúng ta KHÔNG đang trong quá trình "quét thủ công"
+    if (selectedThread && selectedThread.type === 1 && !isScanningAll) {
+      // Hàm scanSingleGroup có sẵn logic kiểm tra "đã quét chưa"
+      scanSingleGroup(selectedThread.id, selectedThread.name);
+    }
+  }, [selectedThread, isScanningAll]); // Phụ thuộc: selectedThread và isScanningAll
 
   // --- Các Hàm Xử lý Tương tác (Actions) ---
 
@@ -529,6 +688,11 @@ export default function BotControlPanel() {
       onClearError={() => setErrorMessage(null)}
       // THÊM MỚI: Truyền handler set lỗi xuống
       onSetError={(msg) => setErrorMessage(msg)}
+      // THÊM MỚI (Lô Cache): Truyền props cache
+      userCache={userCache}
+      onStartManualScan={handleStartManualScan}
+      isScanningAll={isScanningAll}
+      scanStatus={scanStatus}
     />
   );
 }

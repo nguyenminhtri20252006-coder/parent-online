@@ -6,7 +6,12 @@
  * Module 3: Khung chat chính
  */
 import { useState, useRef, useEffect, FormEvent, ChangeEvent } from "react";
-import { ThreadInfo, ZaloMessage } from "@/lib/types/zalo.types";
+// SỬA ĐỔI (Lô 3): Import thêm UserCacheEntry
+import {
+  ThreadInfo,
+  ZaloMessage,
+  UserCacheEntry,
+} from "@/lib/types/zalo.types";
 import { Avatar } from "@/app/components/ui/Avatar";
 // THÊM MỚI: Import IconBookOpen
 import { IconInfo, IconSend, IconBookOpen } from "@/app/components/ui/Icons";
@@ -23,6 +28,8 @@ export function ChatFrame({
   isSendingMessage,
   isSendingVocab,
   onSetError,
+  // THÊM MỚI (Lô 3): Prop UserCache
+  userCache,
 }: {
   thread: ThreadInfo | null;
   messages: ZaloMessage[];
@@ -35,6 +42,8 @@ export function ChatFrame({
   isSendingMessage: boolean;
   isSendingVocab: boolean;
   onSetError: (message: string | null) => void;
+  // THÊM MỚI (Lô 3)
+  userCache: Record<string, UserCacheEntry>;
 }) {
   const [messageContent, setMessageContent] = useState("");
   // SỬA ĐỔI: Xóa state `isSending` cục bộ, sử dụng prop `isSendingMessage`
@@ -122,30 +131,66 @@ export function ChatFrame({
 
       {/* Khung Log Tin nhắn */}
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        {messages.map((msg, index) => (
-          <div
-            key={msg.data.ts + index}
-            className={`flex max-w-lg flex-col ${
-              msg.isSelf ? "ml-auto items-end" : "mr-auto items-start"
-            }`}
-          >
-            <span className="text-xs text-gray-400">{msg.data.dName}</span>
+        {messages.map((msg, index) => {
+          // SỬA ĐỔI (Lô 3): Lấy thông tin người gửi từ cache
+          // uidFrom có thể không tồn tại trên cache nếu là nhóm (chưa quét)
+          const senderInfo = userCache[msg.data.uidFrom];
+          const senderName = senderInfo?.name || msg.data.dName;
+          const senderAvatar = senderInfo?.avatar || ""; // Fallback về chuỗi rỗng
+
+          // SỬA ĐỔI (Lô 3.5): Nếu là chat 1-1, dùng avatar của thread (người bạn)
+          const avatarToShow = thread.type === 0 ? thread.avatar : senderAvatar;
+          const nameToShow = thread.type === 0 ? thread.name : senderName;
+
+          return (
             <div
-              className={`mt-1 rounded-lg p-3 ${
-                msg.isSelf
-                  ? "rounded-br-none bg-blue-700"
-                  : "rounded-bl-none bg-gray-700"
+              key={msg.data.ts + index}
+              className={`flex max-w-lg items-start gap-3 ${
+                // SỬA ĐỔI: Thêm items-start và gap-3
+                msg.isSelf ? "ml-auto flex-row-reverse" : "mr-auto" // SỬA ĐỔI: flex-row-reverse cho tin nhắn tự gửi
               }`}
             >
-              <p className="whitespace-pre-wrap break-words text-white">
-                {renderMessageContent(msg)}
-              </p>
+              {/* SỬA ĐỔI (Lô 3.5): Hiển thị avatar cho MỌI tin nhắn đến, không chỉ nhóm */}
+              {!msg.isSelf ? (
+                <div className="flex-shrink-0">
+                  <Avatar
+                    src={avatarToShow}
+                    alt={nameToShow}
+                    isGroup={false} // Luôn là avatar của user
+                  />
+                </div>
+              ) : (
+                // Tin nhắn của mình (isSelf) không cần avatar, nhưng cần placeholder để căn lề
+                <div className="w-10 flex-shrink-0"></div>
+              )}
+
+              <div
+                className={`flex flex-col ${
+                  msg.isSelf ? "items-end" : "items-start" // Căn lề nội dung bên trong
+                }`}
+              >
+                {/* SỬA ĐỔI (Lô 3): Hiển thị tên (chỉ khi là nhóm VÀ không phải của mình) */}
+                {thread.type === 1 && !msg.isSelf && (
+                  <span className="text-xs text-gray-400">{senderName}</span>
+                )}
+                <div
+                  className={`mt-1 rounded-lg p-3 ${
+                    msg.isSelf
+                      ? "rounded-br-none bg-blue-700"
+                      : "rounded-bl-none bg-gray-700"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap break-words text-white">
+                    {renderMessageContent(msg)}
+                  </p>
+                </div>
+                <span className="mt-1 text-xs text-gray-500">
+                  {new Date(parseInt(msg.data.ts, 10)).toLocaleTimeString()}
+                </span>
+              </div>
             </div>
-            <span className="mt-1 text-xs text-gray-500">
-              {new Date(parseInt(msg.data.ts, 10)).toLocaleTimeString()}
-            </span>
-          </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 

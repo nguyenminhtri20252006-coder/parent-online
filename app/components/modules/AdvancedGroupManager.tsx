@@ -252,7 +252,7 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
 
           {pending && (
             <div className="mt-2 space-y-2">
-              {pending.users.length === 0 ? (
+              {!pending.users || pending.users.length === 0 ? (
                 <p className="text-sm text-gray-400">Không có ai chờ duyệt.</p>
               ) : (
                 pending.users.map((user) => (

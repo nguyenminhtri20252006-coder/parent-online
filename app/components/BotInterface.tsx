@@ -12,6 +12,7 @@ import {
   ThreadInfo,
   ZaloMessage,
   ViewState,
+  UserCacheEntry, // THÊM MỚI (Lô Cache)
 } from "@/lib/types/zalo.types";
 import { MainMenu } from "@/app/components/modules/MainMenu";
 import { ConversationList } from "@/app/components/modules/ConversationList";
@@ -63,6 +64,11 @@ type BotInterfaceProps = {
   onClearError: () => void;
   // THÊM MỚI: Handler set lỗi
   onSetError: (message: string | null) => void;
+  // THÊM MỚI (Lô Cache): Props cho User Cache
+  userCache: Record<string, UserCacheEntry>;
+  onStartManualScan: () => void;
+  isScanningAll: boolean;
+  scanStatus: string;
 };
 
 export function BotInterface({
@@ -109,6 +115,11 @@ export function BotInterface({
   onClearError,
   // THÊM MỚI: Handler set lỗi
   onSetError,
+  // THÊM MỚI (Lô Cache): Props cho User Cache
+  userCache,
+  onStartManualScan,
+  isScanningAll,
+  scanStatus,
 }: BotInterfaceProps) {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-gray-800 font-sans text-gray-100">
@@ -153,6 +164,8 @@ export function BotInterface({
             isSendingMessage={isSendingMessage}
             isSendingVocab={isSendingVocab}
             onSetError={onSetError}
+            // THÊM MỚI (Lô Cache): Truyền cache xuống
+            userCache={userCache}
           />
 
           {/* Module 4: Details Panel (Conditional) */}
@@ -172,6 +185,11 @@ export function BotInterface({
           selectedThread={selectedThread}
           threads={threads}
           onRefreshThreads={onRefreshThreads}
+          // THÊM MỚI (Lô Cache): Truyền props cache
+          userCache={userCache}
+          onStartManualScan={onStartManualScan}
+          isScanningAll={isScanningAll}
+          scanStatus={scanStatus}
         />
       )}
 

@@ -24,6 +24,7 @@ import {
   GetSentFriendRequestResponse,
   SentFriendRequestInfo,
   ThreadInfo, // <--- THÊM MỚI (GĐ 3.7)
+  UserCacheEntry, // THÊM MỚI (Lô 4)
 } from "@/lib/types/zalo.types";
 import { Avatar } from "@/app/components/ui/Avatar";
 // SỬA ĐỔI (GĐ 3.6): Import thêm icons
@@ -37,6 +38,8 @@ import {
 } from "@/app/components/ui/Icons";
 // THÊM MỚI (GĐ 3.9): Import component Quản lý Nâng cao
 import { AdvancedGroupManager } from "./AdvancedGroupManager";
+// THÊM MỚI (Lô 4): Import component Cache
+import { UserDatabasePanel } from "./UserDatabasePanel";
 
 /**
  * Component con (GĐ 3.5): Bảng điều khiển Kết bạn
@@ -492,10 +495,20 @@ export function ManagementPanel({
   selectedThread,
   threads,
   onRefreshThreads,
+  // THÊM MỚI (Lô 4): Props cho User Cache
+  userCache,
+  onStartManualScan,
+  isScanningAll,
+  scanStatus,
 }: {
   selectedThread: ThreadInfo | null;
   threads: ThreadInfo[];
   onRefreshThreads: () => void;
+  // THÊM MỚI (Lô 4)
+  userCache: Record<string, UserCacheEntry>;
+  onStartManualScan: () => void;
+  isScanningAll: boolean;
+  scanStatus: string;
 }) {
   // Lọc danh sách chỉ lấy Bạn bè (type 0)
   const friendsList = threads.filter((t) => t.type === 0);
@@ -524,6 +537,15 @@ export function ManagementPanel({
         <AdvancedGroupManager
           selectedThread={selectedThread}
           threads={threads}
+        />
+
+        {/* THÊM MỚI (Lô 4): Bảng Thống kê Cache */}
+        <UserDatabasePanel
+          userCache={userCache}
+          threads={threads}
+          onStartManualScan={onStartManualScan}
+          isScanningAll={isScanningAll}
+          scanStatus={scanStatus}
         />
       </div>
     </div>

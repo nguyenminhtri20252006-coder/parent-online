@@ -106,7 +106,7 @@ export class ZaloSingletonService {
 
     this.zalo = new Zalo({
       imageMetadataGetter,
-      selfListen: false,
+      selfListen: true,
       logging: true,
     });
   }
@@ -735,6 +735,20 @@ export class ZaloSingletonService {
     const api = this.checkApi();
     console.log(`[Service] Đang xóa bạn: ${friendId}`);
     await api.removeFriend(friendId);
+  }
+
+  
+  /**
+   * [API] Lấy TOÀN BỘ danh sách bạn bè (dùng cho cache)
+   * (Khác với getThreads, hàm này trả về đầy đủ User object)
+   */
+  public async getAllFriends(): Promise<User[]> {
+    const api = this.checkApi();
+    console.log(
+      `[Service] Đang tải TOÀN BỘ danh sách bạn bè (cho User Cache)...`,
+    );
+    // Mặc định `zca-js` lấy 20000, đủ cho hầu hết các trường hợp
+    return api.getAllFriends();
   }
 
   /**

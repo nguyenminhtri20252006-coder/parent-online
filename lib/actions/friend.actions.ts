@@ -6,7 +6,8 @@
  * Lớp Logic (Server Actions - Lớp 2) - Nghiệp vụ Quản lý Bạn bè.
  */
 import { ZaloSingletonService } from "@/lib/runtime-service";
-import { FindUserResponse } from "zca-js";
+// THÊM MỚI: Import User
+import { FindUserResponse, User } from "zca-js";
 
 /**
  * [API] Tìm kiếm người dùng bằng SĐT
@@ -143,6 +144,21 @@ export async function getSentFriendRequestAction() {
     console.error("[Action Error] getSentFriendRequestAction:", error);
     throw new Error(
       error instanceof Error ? error.message : "Lỗi lấy lời mời đã gửi",
+    );
+  }
+}
+
+/**
+ * [API] Lấy TOÀN BỘ danh sách bạn bè (cho User Cache)
+ */
+export async function getAllFriendsAction(): Promise<User[]> {
+  console.log(`[Action] Yêu cầu getAllFriendsAction (cho User Cache)`);
+  try {
+    return await ZaloSingletonService.getInstance().getAllFriends();
+  } catch (error: unknown) {
+    console.error("[Action Error] getAllFriendsAction:", error);
+    throw new Error(
+      error instanceof Error ? error.message : "Lỗi lấy danh sách bạn bè",
     );
   }
 }

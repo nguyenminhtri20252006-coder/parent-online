@@ -129,6 +129,10 @@ export type {
   GetSentFriendRequestResponse,
   GetFriendRecommendationsResponse,
 };
+/**
+ * THÊM MỚI (Lô Cache): Kiểu dữ liệu trả về từ API getAllFriends (dựa trên tài liệu)
+ */
+export type GetAllFriendsResponse = User[];
 
 // PHẦN 2: QUẢN LÝ NHÓM
 export type {
@@ -202,4 +206,19 @@ export type VocabularyApiResponse = {
   id: number;
   count: number;
   words: VocabularyWord[];
+};
+
+// --- THÊM MỚI (Lô Cache): TYPES CHO BỘ ĐỆM (CACHE) NGƯỜI DÙNG ---
+
+/**
+ * Kiểu dữ liệu cho một mục (entry) trong User Cache.
+ * Lưu trữ thông tin hợp nhất về một người dùng.
+ */
+export type UserCacheEntry = {
+  id: string; // UID
+  name: string;
+  avatar: string;
+  isFriend: boolean;
+  phoneNumber: string | null;
+  commonGroups: Set<string>; // Set chứa các Group ID chung
 };

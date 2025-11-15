@@ -17,6 +17,8 @@ import {
   // THÊM MỚI (GĐ 3.10)
   GroupInfoResponse,
   GetGroupMembersInfoResponse,
+  // THÊM MỚI (Lô Cache)
+  GroupMemberProfile,
 } from "@/lib/types/zalo.types";
 
 /**
@@ -68,6 +70,42 @@ export async function getGroupMembersInfoAction(
   }
 }
 
+/**
+ * THÊM MỚI (Lô Cache): Action quét thành viên nhóm
+ * Kết hợp getGroupInfo (lấy IDs) và getGroupMembersInfo (lấy Profiles)
+ */
+export async function scanGroupMembersAction(
+  groupId: string,
+): Promise<Record<string, GroupMemberProfile>> {
+  console.log(`[Action] Yêu cầu scanGroupMembersAction cho nhóm: ${groupId}`);
+  const service = ZaloSingletonService.getInstance();
+  try {
+    // Bước 1: Lấy thông tin nhóm để có danh sách ID thành viên
+    // (Sử dụng logic tương tự AdvancedGroupManager.tsx)
+    const groupInfo = await service.getGroupInfo(groupId);
+    const groupData = groupInfo.gridInfoMap[groupId];
+
+    if (!groupData || !groupData.memVerList) {
+      throw new Error(
+        "Không thể lấy danh sách ID thành viên nhóm (memVerList).",
+      );
+    }
+    const memberIds = groupData.memVerList;
+
+    if (memberIds.length === 0) {
+      return {}; // Nhóm không có thành viên
+    }
+
+    // Bước 2: Lấy thông tin profile của các thành viên
+    const memberProfiles = await service.getGroupMembersInfo(memberIds);
+    return memberProfiles.profiles; // Trả về Map { [uid]: profile }
+  } catch (error: unknown) {
+    console.error("[Action Error] scanGroupMembersAction:", error);
+    throw new Error(
+      error instanceof Error ? error.message : "Lỗi quét thành viên nhóm",
+    );
+  }
+}
 /**
  * [API] Rời khỏi nhóm
  */
