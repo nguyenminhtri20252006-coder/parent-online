@@ -85,6 +85,13 @@ export class ZaloSingletonService {
   private loginError: string | null = null;
   private isEchoBotEnabled: boolean = false; // Mặc định TẮT Bot Nhại
 
+  // THÊM MỚI (GĐ 4): Lưu ID của bot và cache quyền hạn
+  private botId: string | null = null;
+  private groupPermissionCache: Map<
+    string,
+    { isOwner: boolean; isAdmin: boolean }
+  > = new Map();
+
   // 3. Constructor (private)
   private constructor() {
     console.log("[Service] Đang khởi tạo ZaloSingletonService lần đầu...");
@@ -573,6 +580,8 @@ export class ZaloSingletonService {
     this.loginState = "IDLE";
     this.loginError = null;
     this.isEchoBotEnabled = false; // Reset bot nhại
+    this.botId = null; // THÊM MỚI (GĐ 4): Xóa ID Bot
+    this.groupPermissionCache.clear(); // THÊM MỚI (GĐ 4): Xóa cache quyền
     console.log(
       "[Service] Trạng thái đã được reset về IDLE. API instance đã bị hủy.",
     );
@@ -588,6 +597,62 @@ export class ZaloSingletonService {
       throw new Error("Chưa đăng nhập (API instance is null).");
     }
     return this.api;
+  }
+  // THÊM MỚI (GĐ 4): Hàm Kiểm tra Quyền (Guard) và Cache
+  /**
+   * Kiểm tra quyền hạn (Owner/Admin) của Bot trong một nhóm.
+   * Sử dụng cache để tránh gọi API lặp lại.
+   */
+  private async _getBotPermissions(
+    groupId: string,
+  ): Promise<{ isOwner: boolean; isAdmin: boolean }> {
+    // 1. Kiểm tra API và Bot ID
+    const api = this.checkApi(); // Sẽ ném lỗi nếu chưa đăng nhập
+    if (!this.botId) {
+      console.warn(
+        "[Service Guard] Không thể kiểm tra quyền: botId chưa được set.",
+      );
+      // Thử lấy lại botId nếu bị thiếu
+      this.botId = api.getOwnId();
+      if (!this.botId) {
+        throw new Error("Không thể lấy Bot ID để xác thực quyền.");
+      }
+    }
+
+    // 2. Kiểm tra Cache
+    if (this.groupPermissionCache.has(groupId)) {
+      return this.groupPermissionCache.get(groupId)!;
+    }
+
+    // 3. Gọi API (nếu không có trong cache)
+    console.log(
+      `[Service Guard] Đang lấy quyền cho bot ${this.botId} trong nhóm ${groupId}...`,
+    );
+    // Tạm thời gọi getGroupInfo (nếu getGroupInfo cần quyền admin,
+    // chúng ta sẽ cần một API khác không cần quyền)
+    // Giả định getGroupInfo không cần quyền admin
+    const groupInfo = await this.getGroupInfo(groupId);
+    const groupData = groupInfo.gridInfoMap[groupId];
+
+    if (!groupData) {
+      // Xóa cache nếu nhóm không tồn tại
+      this.groupPermissionCache.delete(groupId);
+      throw new Error(`Không thể tìm thấy thông tin cho nhóm ${groupId}`);
+    }
+
+    // 4. Xác định quyền (dựa trên tài liệu API)
+    const isOwner = groupData.creatorId === this.botId;
+    // Đảm bảo adminIds là mảng
+    const adminIds = Array.isArray(groupData.adminIds)
+      ? groupData.adminIds
+      : [];
+    const isAdmin = adminIds.includes(this.botId);
+
+    const permissions = { isOwner, isAdmin };
+
+    // 5. Lưu vào Cache và trả về
+    this.groupPermissionCache.set(groupId, permissions);
+    return permissions;
   }
 
   /**
@@ -717,12 +782,24 @@ export class ZaloSingletonService {
    */
   public async disperseGroup(groupId: string): Promise<void> {
     const api = this.checkApi();
+    // THÊM MỚI (GĐ 4): Kiểm tra quyền (chỉ Owner)
+    const perms = await this._getBotPermissions(groupId);
+    if (!perms.isOwner) {
+      throw new Error("Permission Denied: Bot is not the Owner of this group.");
+    }
     console.log(`[Service] Giải tán nhóm: ${groupId}`);
     await api.disperseGroup(groupId);
   }
 
   public async addUserToGroup(memberId: string | string[], groupId: string) {
     const api = this.checkApi();
+    // THÊM MỚI (GĐ 4): Kiểm tra quyền (Admin/Owner)
+    const perms = await this._getBotPermissions(groupId);
+    if (!perms.isOwner && !perms.isAdmin) {
+      throw new Error(
+        "Permission Denied: Bot is not an Admin or Owner, cannot add members.",
+      );
+    }
     console.log(`[Service] Thêm thành viên vào nhóm: ${groupId}`);
     return api.addUserToGroup(memberId, groupId);
   }
@@ -735,6 +812,13 @@ export class ZaloSingletonService {
     groupId: string,
   ) {
     const api = this.checkApi();
+    // THÊM MỚI (GĐ 4): Kiểm tra quyền
+    const perms = await this._getBotPermissions(groupId);
+    if (!perms.isOwner && !perms.isAdmin) {
+      throw new Error(
+        "Permission Denied: Bot is not an Admin or Owner, cannot remove members.",
+      );
+    }
     console.log(`[Service] Xóa thành viên khỏi nhóm: ${groupId}`);
     return api.removeUserFromGroup(memberId, groupId);
   }
@@ -755,15 +839,20 @@ export class ZaloSingletonService {
 
   public async getPendingGroupMembers(
     groupId: string,
-    offset: number,
-    count: number,
   ): Promise<GetPendingGroupMembersResponse> {
     const api = this.checkApi();
+    // THÊM MỚI (GĐ 4): Kiểm tra quyền
+    const perms = await this._getBotPermissions(groupId);
+    if (!perms.isOwner && !perms.isAdmin) {
+      throw new Error(
+        "Permission Denied: Bot is not an Admin or Owner of this group.",
+      );
+    }
     console.log(
-      `[Service] Lấy thành viên chờ duyệt của nhóm: ${groupId} (Offset: ${offset}, Count: ${count})`,
+      `[Service] Lấy thành viên chờ duyệt của nhóm: ${groupId}`, // Sửa log
     );
-    // @ts-expect-error - Bỏ qua lỗi type (Expected 1) vì API thật sự cần 3 tham số
-    return api.getPendingGroupMembers(groupId, offset, count);
+
+    return api.getPendingGroupMembers(groupId);
   }
 
   /**
@@ -774,6 +863,13 @@ export class ZaloSingletonService {
     groupId: string,
   ): Promise<Record<string, ReviewPendingMemberRequestStatus>> {
     const api = this.checkApi();
+    // THÊM MỚI (GĐ 4): Kiểm tra quyền
+    const perms = await this._getBotPermissions(groupId);
+    if (!perms.isOwner && !perms.isAdmin) {
+      throw new Error(
+        "Permission Denied: Bot is not an Admin or Owner of this group.",
+      );
+    }
     console.log(`[Service] Duyệt thành viên cho nhóm: ${groupId}`);
     return api.reviewPendingMemberRequest(payload, groupId);
   }
@@ -786,6 +882,13 @@ export class ZaloSingletonService {
     groupId: string,
   ) {
     const api = this.checkApi();
+    // THÊM MỚI (GĐ 4): Kiểm tra quyền
+    const perms = await this._getBotPermissions(groupId);
+    if (!perms.isOwner && !perms.isAdmin) {
+      throw new Error(
+        "Permission Denied: Bot is not an Admin or Owner of this group.",
+      );
+    }
     console.log(`[Service] Cập nhật cài đặt nhóm: ${groupId}`);
     return api.updateGroupSettings(options, groupId);
   }
@@ -802,12 +905,26 @@ export class ZaloSingletonService {
 
   public async enableGroupLink(groupId: string) {
     const api = this.checkApi();
+    // THÊM MỚI (GĐ 4): Kiểm tra quyền
+    const perms = await this._getBotPermissions(groupId);
+    if (!perms.isOwner && !perms.isAdmin) {
+      throw new Error(
+        "Permission Denied: Bot is not an Admin or Owner of this group.",
+      );
+    }
     console.log(`[Service] Bật link mời nhóm: ${groupId}`);
     return api.enableGroupLink(groupId);
   }
 
   public async disableGroupLink(groupId: string): Promise<void> {
     const api = this.checkApi();
+    // THÊM MỚI (GĐ 4): Kiểm tra quyền
+    const perms = await this._getBotPermissions(groupId);
+    if (!perms.isOwner && !perms.isAdmin) {
+      throw new Error(
+        "Permission Denied: Bot is not an Admin or Owner of this group.",
+      );
+    }
     console.log(`[Service] Tắt link mời nhóm: ${groupId}`);
     await api.disableGroupLink(groupId);
   }

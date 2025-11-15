@@ -168,19 +168,13 @@ export async function getGroupInviteBoxListAction(payload?: {
 /**
  * [API] Lấy danh sách thành viên chờ duyệt
  */
-export async function getPendingGroupMembersAction(
-  groupId: string,
-  offset: number = 0, // THÊM MẶC ĐỊNH
-  count: number = 20, // THÊM MẶC ĐỊNH
-) {
+export async function getPendingGroupMembersAction(groupId: string) {
   console.log(
-    `[Action] Yêu cầu getPendingGroupMembersAction cho nhóm: ${groupId}, Offset: ${offset}, Count: ${count}`,
+    `[Action] Yêu cầu getPendingGroupMembersAction cho nhóm: ${groupId}`,
   );
   try {
     return await ZaloSingletonService.getInstance().getPendingGroupMembers(
       groupId,
-      offset, // THÊM
-      count, // THÊM
     );
   } catch (error: unknown) {
     console.error("[Action Error] getPendingGroupMembersAction:", error);

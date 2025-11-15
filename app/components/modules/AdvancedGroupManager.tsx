@@ -38,6 +38,32 @@ import {
   removeUserFromGroupAction,
   addUserToGroupAction,
 } from "@/lib/actions/group.actions";
+const IconLockClosed = ({ className }: { className: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+  >
+    <path
+      fillRule="evenodd"
+      d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm-3.75 5.25a3.75 3.75 0 017.5 0v3h-7.5v-3z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
+// Component hiển thị lỗi Quyền
+const PermissionDeniedMessage = ({ message }: { message: string }) => (
+  <div className="mt-2 flex items-center gap-2 rounded-md border border-yellow-700 bg-yellow-900/50 p-3 text-sm text-yellow-300">
+    <IconLockClosed className="h-5 w-5 flex-shrink-0" />
+    <span className="flex-1">
+      {message.includes("Permission Denied")
+        ? "Bạn không có quyền (Trưởng/Phó nhóm) để thực hiện hành động này."
+        : message}
+    </span>
+  </div>
+);
 
 // --- Component 1: Quản lý Link mời ---
 function ManageLinkPanel({ thread }: { thread: ThreadInfo }) {
