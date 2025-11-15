@@ -172,3 +172,34 @@ export type UpdateGroupSettingsOptions = {
 };
 
 export type ViewState = "chat" | "manage";
+
+// --- THÊM MỚI: TYPES CHO API TỪ VỰNG (BÊN NGOÀI) ---
+
+/**
+ * Kiểu dữ liệu cho phần giải nghĩa (explanation) trong API từ vựng
+ */
+export type VocabularyExplanation = {
+  term: string;
+  type: string;
+  meaning_vi: string;
+};
+
+/**
+ * Kiểu dữ liệu cho một từ (word) trong API từ vựng
+ */
+export type VocabularyWord = {
+  word: string;
+  ipa: string;
+  meaning: string;
+  example: string;
+  explanation: VocabularyExplanation[];
+};
+
+/**
+ * Kiểu dữ liệu cho toàn bộ phản hồi (response) từ API từ vựng
+ */
+export type VocabularyApiResponse = {
+  id: number;
+  count: number;
+  words: VocabularyWord[];
+};

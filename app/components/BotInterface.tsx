@@ -46,6 +46,11 @@ type BotInterfaceProps = {
   onSendMessage: (content: string) => Promise<void>;
   isEchoBotEnabled: boolean;
   onToggleEchoBot: (e: ChangeEvent<HTMLInputElement>) => void;
+  // THÊM MỚI: Props cho Gửi Từ vựng
+  onSendVocabulary: (topic: string, type: 0 | 1) => Promise<void>; // SỬA ĐỔI: Thêm type
+  isSendingMessage: boolean;
+  isSendingVocab: boolean;
+  // Props cho Module 4
   threadForDetails: ThreadInfo | null; // SỬA LỖI: Thêm prop vào định nghĩa type
   isDetailsPanelOpen: boolean;
   onToggleDetails: () => void;
@@ -56,6 +61,8 @@ type BotInterfaceProps = {
   // Props cho Lỗi
   errorMessage: string | null;
   onClearError: () => void;
+  // THÊM MỚI: Handler set lỗi
+  onSetError: (message: string | null) => void;
 };
 
 export function BotInterface({
@@ -79,10 +86,16 @@ export function BotInterface({
   onSearchChange,
   onFetchThreads,
   isLoadingThreads,
+  // Props cho Module 3
+  thread, // SỬA ĐỔI: Thêm lại
   messages,
   onSendMessage,
   isEchoBotEnabled,
   onToggleEchoBot,
+  // THÊM MỚI: Props cho Gửi Từ vựng
+  onSendVocabulary,
+  isSendingMessage,
+  isSendingVocab,
   // Props cho Module 4
   threadForDetails,
   isDetailsPanelOpen,
@@ -94,6 +107,8 @@ export function BotInterface({
   threads,
   errorMessage,
   onClearError,
+  // THÊM MỚI: Handler set lỗi
+  onSetError,
 }: BotInterfaceProps) {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-gray-800 font-sans text-gray-100">
@@ -134,6 +149,10 @@ export function BotInterface({
             onToggleDetails={onToggleDetails}
             isEchoBotEnabled={isEchoBotEnabled}
             onToggleEchoBot={onToggleEchoBot}
+            onSendVocabulary={onSendVocabulary}
+            isSendingMessage={isSendingMessage}
+            isSendingVocab={isSendingVocab}
+            onSetError={onSetError}
           />
 
           {/* Module 4: Details Panel (Conditional) */}

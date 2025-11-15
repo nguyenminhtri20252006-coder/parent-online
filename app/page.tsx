@@ -21,6 +21,8 @@ import {
   getThreadsAction,
   setEchoBotStateAction,
 } from "@/lib/actions/chat.actions";
+// THÊM MỚI: Import action từ vựng
+import { sendVocabularyMessageAction } from "@/lib/actions/vocabulary.actions";
 
 // SỬA ĐỔI: Nhập (import) tất cả types và constants từ tệp SSOT
 import {
@@ -54,7 +56,8 @@ export default function BotControlPanel() {
   );
   const [showTokenModal, setShowTokenModal] = useState<boolean>(false);
   const [isCopying, setIsCopying] = useState<boolean>(false);
-  const [isSending, setIsSending] = useState(false); // Dùng chung cho (login, send msg)
+  // SỬA ĐỔI: Đổi tên isSending -> isLoggingIn (để rõ ràng hơn)
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Trạng thái Dữ liệu (State của Ứng dụng)
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
@@ -74,6 +77,10 @@ export default function BotControlPanel() {
   // Trạng thái UI
   const [searchTerm, setSearchTerm] = useState("");
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
+
+  // THÊM MỚI: State cho các hành động gửi (để tránh xung đột)
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [isSendingVocab, setIsSendingVocab] = useState(false);
 
   // Ref cho EventSource
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -173,7 +180,7 @@ export default function BotControlPanel() {
               setMessages([]);
               setSelectedThread(null);
               setQrCode(null);
-              setIsSending(false);
+              setIsLoggingIn(false); // SỬA ĐỔI: Đổi tên
               setSessionTokenForCopy(null);
               setView("chat"); // Reset view về chat
             }
@@ -196,7 +203,7 @@ export default function BotControlPanel() {
           setLoginState("LOGGED_IN");
           setQrCode(null);
           setErrorMessage(null);
-          setIsSending(false);
+          setIsLoggingIn(false); // SỬA ĐỔI: Đổi tên
           setTokenInput("");
           handleFetchAccountInfo();
           handleFetchThreads();
@@ -212,7 +219,7 @@ export default function BotControlPanel() {
           setErrorMessage(errorMsg);
           setLoginState("ERROR");
           setQrCode(null);
-          setIsSending(false);
+          setIsLoggingIn(false); // SỬA ĐỔI: Đổi tên
           break;
         case ZALO_EVENTS.NEW_MESSAGE:
           if (
@@ -285,16 +292,16 @@ export default function BotControlPanel() {
     setLoginState("LOGGING_IN");
     setErrorMessage(null);
     setQrCode(null);
-    setIsSending(true);
+    setIsLoggingIn(true); // SỬA ĐỔI: Đổi tên
     startLoginQRAction();
   };
 
   const handleStartLoginWithToken = async () => {
-    if (isSending || !tokenInput) return;
+    if (isLoggingIn || !tokenInput) return; // SỬA ĐỔI: Đổi tên
     setLoginState("LOGGING_IN");
     setErrorMessage(null);
     setQrCode(null);
-    setIsSending(true);
+    setIsLoggingIn(true); // SỬA ĐỔI: Đổi tên
     try {
       await startLoginWithTokenAction(tokenInput);
     } catch (error: unknown) {
@@ -302,7 +309,7 @@ export default function BotControlPanel() {
         error instanceof Error ? error.message : "Lỗi không xác định";
       setLoginState("ERROR");
       setErrorMessage(`Lỗi đăng nhập token: ${errorMsg}`);
-      setIsSending(false);
+      setIsLoggingIn(false); // SỬA ĐỔI: Đổi tên
     }
   };
   const handleLogout = async () => {
@@ -315,7 +322,7 @@ export default function BotControlPanel() {
     setMessages([]);
     setSelectedThread(null);
     setQrCode(null);
-    setIsSending(false);
+    setIsLoggingIn(false); // SỬA ĐỔI: Đổi tên
     setSessionTokenForCopy(null);
     setView("chat"); // Reset view
 
@@ -360,17 +367,46 @@ export default function BotControlPanel() {
       return;
     }
     setErrorMessage(null);
+    setIsSendingMessage(true);
 
-    const result = await sendMessageAction(
-      content,
-      selectedThread.id,
-      selectedThread.type,
-    );
+    try {
+      const result = await sendMessageAction(
+        content,
+        selectedThread.id,
+        selectedThread.type,
+      );
 
-    if (!result.success) {
-      setErrorMessage(result.error || "Gửi thất bại");
-    } else {
-      setErrorMessage(null);
+      if (!result.success) {
+        setErrorMessage(result.error || "Gửi thất bại");
+      }
+    } catch (error: unknown) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Lỗi gửi tin nhắn",
+      );
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  // THÊM MỚI: Handler cho Gửi Từ vựng
+  const handleSendVocabulary = async (topic: string, type: 0 | 1) => {
+    if (!selectedThread) {
+      setErrorMessage("Lỗi: Phải chọn một hội thoại để gửi từ vựng.");
+      return;
+    }
+    setErrorMessage(null);
+    setIsSendingVocab(true);
+
+    try {
+      // SỬA ĐỔI: Truyền `type` xuống Action
+      await sendVocabularyMessageAction(selectedThread.id, topic, type);
+      // Không cần làm gì khi thành công, tin nhắn sẽ tự gửi
+    } catch (error: unknown) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Lỗi gửi từ vựng",
+      );
+    } finally {
+      setIsSendingVocab(false);
     }
   };
 
@@ -434,7 +470,7 @@ export default function BotControlPanel() {
         loginState={loginState}
         loginMethod={loginMethod}
         qrCode={qrCode}
-        isSending={isSending}
+        isSending={isLoggingIn} // SỬA ĐỔI: Đổi tên
         onLoginMethodChange={setLoginMethod}
         onTokenChange={setTokenInput}
         onStartLoginQR={handleStartLoginQR}
@@ -477,6 +513,10 @@ export default function BotControlPanel() {
       onSendMessage={handleSendMessage}
       isEchoBotEnabled={isEchoBotEnabled}
       onToggleEchoBot={handleToggleEchoBot}
+      // THÊM MỚI: Props cho Gửi Từ vựng
+      onSendVocabulary={handleSendVocabulary}
+      isSendingMessage={isSendingMessage}
+      isSendingVocab={isSendingVocab}
       // State & Handlers cho Module 4 (Details)
       threadForDetails={selectedThread}
       isDetailsPanelOpen={isDetailsPanelOpen}
@@ -487,6 +527,8 @@ export default function BotControlPanel() {
       // State & Handlers cho Lỗi
       errorMessage={errorMessage}
       onClearError={() => setErrorMessage(null)}
+      // THÊM MỚI: Truyền handler set lỗi xuống
+      onSetError={(msg) => setErrorMessage(msg)}
     />
   );
 }

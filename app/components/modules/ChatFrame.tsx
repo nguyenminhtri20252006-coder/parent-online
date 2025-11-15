@@ -8,7 +8,8 @@
 import { useState, useRef, useEffect, FormEvent, ChangeEvent } from "react";
 import { ThreadInfo, ZaloMessage } from "@/lib/types/zalo.types";
 import { Avatar } from "@/app/components/ui/Avatar";
-import { IconInfo, IconSend } from "@/app/components/ui/Icons";
+// THÊM MỚI: Import IconBookOpen
+import { IconInfo, IconSend, IconBookOpen } from "@/app/components/ui/Icons";
 
 export function ChatFrame({
   thread,
@@ -17,6 +18,11 @@ export function ChatFrame({
   onToggleDetails,
   isEchoBotEnabled,
   onToggleEchoBot,
+  // THÊM MỚI: Props cho Gửi Từ vựng
+  onSendVocabulary,
+  isSendingMessage,
+  isSendingVocab,
+  onSetError,
 }: {
   thread: ThreadInfo | null;
   messages: ZaloMessage[];
@@ -24,9 +30,14 @@ export function ChatFrame({
   onToggleDetails: () => void;
   isEchoBotEnabled: boolean;
   onToggleEchoBot: (e: ChangeEvent<HTMLInputElement>) => void;
+  // THÊM MỚI
+  onSendVocabulary: (topic: string, type: 0 | 1) => Promise<void>; // SỬA ĐỔI: Thêm type
+  isSendingMessage: boolean;
+  isSendingVocab: boolean;
+  onSetError: (message: string | null) => void;
 }) {
   const [messageContent, setMessageContent] = useState("");
-  const [isSending, setIsSending] = useState(false);
+  // SỬA ĐỔI: Xóa state `isSending` cục bộ, sử dụng prop `isSendingMessage`
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Tự cuộn xuống khi có tin nhắn mới
@@ -34,14 +45,32 @@ export function ChatFrame({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Xử lý Gửi tin nhắn thường
   const handleFormSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!messageContent || isSending || !thread) return;
+    if (!messageContent || isSendingMessage || isSendingVocab || !thread)
+      return;
 
-    setIsSending(true);
+    // Không cần setIsLoading(true)
     await onSendMessage(messageContent);
     setMessageContent("");
-    setIsSending(false);
+    // Không cần setIsLoading(false)
+  };
+
+  // THÊM MỚI: Xử lý Gửi Từ vựng
+  const triggerSendVocabulary = () => {
+    // SỬA ĐỔI: Xóa kiểm tra thread.type
+    if (!thread || isSendingMessage || isSendingVocab) {
+      return;
+    }
+    // Sử dụng window.prompt (theo yêu cầu)
+    const topic = window.prompt(
+      "Gửi Từ Vựng\n\nVui lòng nhập Chủ đề (Topic) bạn muốn tạo:", // SỬA ĐỔI: Bỏ "vào Nhóm"
+    );
+    if (topic && topic.trim()) {
+      onSetError(null); // Xóa lỗi cũ
+      onSendVocabulary(topic.trim(), thread.type); // SỬA ĐỔI: Truyền thread.type
+    }
   };
 
   const renderMessageContent = (msg: ZaloMessage) => {
@@ -123,6 +152,42 @@ export function ChatFrame({
       {/* Form Gửi tin */}
       <footer className="border-t border-gray-700 p-4">
         <form onSubmit={handleFormSubmit} className="flex items-center gap-3">
+          {/* THÊM MỚI: Nút Gửi Từ vựng */}
+          <button
+            type="button"
+            onClick={triggerSendVocabulary}
+            disabled={
+              isSendingMessage || isSendingVocab // SỬA LỖI LOGIC: Phải là !== 1 (chỉ bật khi là nhóm)
+            }
+            className="rounded-lg bg-purple-600 p-3 text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-600"
+            title="Gửi Từ vựng theo Chủ đề"
+          >
+            {isSendingVocab ? (
+              <svg // Spinner
+                className="h-6 w-6 animate-spin"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                ></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            ) : (
+              <IconBookOpen className="h-6 w-6" />
+            )}
+          </button>
+
           <textarea
             value={messageContent}
             onChange={(e) => setMessageContent(e.target.value)}
@@ -138,10 +203,34 @@ export function ChatFrame({
           />
           <button
             type="submit"
-            disabled={isSending || !messageContent}
+            disabled={isSendingMessage || isSendingVocab || !messageContent}
             className="rounded-lg bg-blue-600 p-3 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Gửi tin nhắn"
           >
-            <IconSend className="h-6 w-6" />
+            {isSendingMessage ? (
+              <svg // Spinner
+                className="h-6 w-6 animate-spin"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                ></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            ) : (
+              <IconSend className="h-6 w-6" />
+            )}
           </button>
         </form>
         {/* Công tắc Bot Nhại */}

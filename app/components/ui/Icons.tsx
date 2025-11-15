@@ -251,3 +251,22 @@ export const IconClock = ({ className }: { className: string }) => (
     />
   </svg>
 );
+
+/**
+ * THÊM MỚI: Icon Sách (Gửi Từ vựng)
+ */
+export const IconBookOpen = ({ className }: { className: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+  >
+    <path d="M11.25 4.533A9.709 9.709 0 006 3C4.343 3 3 4.343 3 6c0 1.657 1.343 3 3 3 1.12 0 2.1-.606 2.622-1.5zM17.622 7.5A2.622 2.622 0 0118 9c1.657 0 3-1.343 3-3s-1.343-3-3-3a9.709 9.709 0 00-5.25 1.533" />
+    <path
+      fillRule="evenodd"
+      d="M.75 10.5a.75.75 0 01.75-.75h21a.75.75 0 01.75.75v9a.75.75 0 01-.75.75H1.5a.75.75 0 01-.75-.75v-9zM1.5 11.25v7.5h21v-7.5H1.5z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
