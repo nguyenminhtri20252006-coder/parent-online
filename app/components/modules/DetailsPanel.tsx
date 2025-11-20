@@ -105,6 +105,22 @@ export function DetailsPanel({
           <p className="text-sm text-gray-400">
             {thread.type === 1 ? "Nhóm" : "Bạn bè"}
           </p>
+
+          {/* --- THÊM MỚI: Hiển thị ID để sao chép --- */}
+          <div className="mt-2 w-full px-2">
+            <label className="text-xs font-medium text-gray-500">
+              {thread.type === 1 ? "Group ID" : "User ID"} (click để copy)
+            </label>
+            <input
+              type="text"
+              readOnly
+              value={thread.id}
+              className="w-full select-all rounded-md border border-gray-600 bg-gray-700 p-1.5 text-center font-mono text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              onClick={(e) => (e.target as HTMLInputElement).select()}
+              title="Click để chọn và sao chép"
+            />
+          </div>
+          {/* --- KẾT THÚC THÊM MỚI --- */}
         </div>
 
         {/* THÊM MỚI (GĐ 3.4): Khu vực Hành động (Actions) */}

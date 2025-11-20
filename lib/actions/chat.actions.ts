@@ -8,23 +8,32 @@
  */
 
 import { ZaloSingletonService } from "@/lib/runtime-service";
-import { AccountInfo, ThreadInfo } from "@/lib/types/zalo.types";
+// SỬA ĐỔI: Import các type mới từ SSOT
+import {
+  AccountInfo,
+  ThreadInfo,
+  MessageContent,
+  ThreadType,
+  SendVoiceOptions,
+  SendVideoOptions,
+  SendLinkOptions,
+} from "@/lib/types/zalo.types";
 
 /**
  * Gửi một tin nhắn
  * THAY ĐỔI: Thêm tham số 'type' (0 hoặc 1)
  */
 export async function sendMessageAction(
-  content: string,
+  message: string | MessageContent,
   threadId: string,
-  type: 0 | 1, // Thêm tham số này
+  type: ThreadType, // SỬA ĐỔI: Dùng enum ThreadType
 ) {
-  if (!content || !threadId) {
-    return { success: false, error: "Thiếu content hoặc threadId" };
+  if (!message || !threadId) {
+    return { success: false, error: "Thiếu message hoặc threadId" };
   }
   // Cập nhật lệnh gọi để truyền 'type'
   return ZaloSingletonService.getInstance().sendMessage(
-    content,
+    message,
     threadId,
     type,
   );
@@ -68,4 +77,69 @@ export async function setEchoBotStateAction(isEnabled: boolean) {
   console.log(`[Action] Yêu cầu setEchoBotStateAction: ${isEnabled}`);
   // Đây là lệnh 'void', không cần try/catch trừ khi muốn báo lỗi về UI
   ZaloSingletonService.getInstance().setEchoBotState(isEnabled);
+}
+
+// --- THÊM MỚI (GĐ 5): ACTIONS ĐA PHƯƠNG TIỆN ---
+
+/**
+ * [API] Gửi tin nhắn Voice (từ URL)
+ */
+export async function sendVoiceAction(
+  options: SendVoiceOptions,
+  threadId: string,
+  type: ThreadType,
+) {
+  console.log(`[Action] Yêu cầu sendVoiceAction đến: ${threadId}`);
+  try {
+    return await ZaloSingletonService.getInstance().sendVoice(
+      options,
+      threadId,
+      type,
+    );
+  } catch (error: unknown) {
+    console.error("[Action Error] sendVoiceAction:", error);
+    throw new Error(error instanceof Error ? error.message : "Lỗi gửi Voice");
+  }
+}
+
+/**
+ * [API] Gửi tin nhắn Video (từ URL)
+ */
+export async function sendVideoAction(
+  options: SendVideoOptions,
+  threadId: string,
+  type: ThreadType,
+) {
+  console.log(`[Action] Yêu cầu sendVideoAction đến: ${threadId}`);
+  try {
+    return await ZaloSingletonService.getInstance().sendVideo(
+      options,
+      threadId,
+      type,
+    );
+  } catch (error: unknown) {
+    console.error("[Action Error] sendVideoAction:", error);
+    throw new Error(error instanceof Error ? error.message : "Lỗi gửi Video");
+  }
+}
+
+/**
+ * [API] Gửi tin nhắn Link (Preview)
+ */
+export async function sendLinkAction(
+  options: SendLinkOptions,
+  threadId: string,
+  type: ThreadType,
+) {
+  console.log(`[Action] Yêu cầu sendLinkAction đến: ${threadId}`);
+  try {
+    return await ZaloSingletonService.getInstance().sendLink(
+      options,
+      threadId,
+      type,
+    );
+  } catch (error: unknown) {
+    console.error("[Action Error] sendLinkAction:", error);
+    throw new Error(error instanceof Error ? error.message : "Lỗi gửi Link");
+  }
 }

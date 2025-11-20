@@ -3,10 +3,18 @@
  *
  * Nguồn sự thật duy nhất (SSOT) cho tất cả các kiểu dữ liệu (Types)
  * và hằng số (Constants) của Zalo trong toàn bộ dự án.
+ *
+ * CẬP NHẬT (GĐ 5 - Sửa lỗi Build):
+ * - Thay đổi TẤT CẢ import từ 'zca-js' thành 'import type' để ngăn
+ * Next.js/Turbopack kéo runtime code của 'zca-js' (chứa 'node:fs')
+ * vào Client Component bundle.
+ * - Xóa import 'ThreadType' (là enum, một giá trị runtime) từ 'zca-js'.
+ * - Định nghĩa 'ThreadType' cục bộ (locally) để sử dụng an toàn trong cả client và server.
+ * - Thay đổi TẤT CẢ re-export từ 'zca-js' thành 'export type'.
  */
 
-// Import các kiểu gốc từ 'zca-js' mà chúng ta muốn mở rộng hoặc tham chiếu
-import {
+// Import CHỈ CÁC TYPES từ 'zca-js'
+import type {
   User,
   GroupInfo,
   ZBusinessPackage,
@@ -35,6 +43,14 @@ import {
   GetPendingGroupMembersUserInfo,
   ReviewPendingMemberRequestStatus,
   GroupMemberProfile,
+  // --- NÂNG CẤP ĐA PHƯƠNG TIỆN ---
+  MessageContent,
+  SendVoiceOptions,
+  SendVoiceResponse,
+  SendVideoOptions,
+  SendVideoResponse,
+  SendLinkOptions,
+  SendLinkResponse,
 } from "zca-js";
 
 // --- CÁC HẰNG SỐ (CONSTANTS) ---
@@ -54,32 +70,85 @@ export const ZALO_EVENTS = {
   SESSION_GENERATED: "session_generated",
 };
 
+// --- SỬA LỖI BUILD: Định nghĩa ThreadType cục bộ ---
+// Đây là một enum, là một giá trị runtime.
+// Import nó từ 'zca-js' sẽ kéo toàn bộ thư viện vào client.
+// Định nghĩa nó ở đây sẽ giúp client an toàn.
+export enum ThreadType {
+  User = 0,
+  Group = 1,
+}
+
 // --- CÁC KIỂU DỮ LIỆU (TYPES) CƠ BẢN ---
 
-/**
- * Trạng thái đăng nhập của Ứng dụng
- */
 export type LoginState = "IDLE" | "LOGGING_IN" | "LOGGED_IN" | "ERROR";
 
 /**
- * Payload tin nhắn Zalo (từ zca-js)
+ * THÊM MỚI: Định nghĩa Content Đa phương tiện
+ */
+
+// 1. Sticker Content (từ Log thực tế)
+export interface ZaloStickerContent {
+  id: number;
+  catId: number; // Log trả về catId
+  type: number;
+}
+
+// 2. Attachment Content (Photo, Link, File)
+export interface ZaloAttachmentContent {
+  title: string;
+  description: string;
+  href: string; // Link ảnh gốc hoặc Link web
+  thumb: string; // Link thumbnail
+  params?: string; // JSON string chứa width, height, duration...
+}
+
+// 3. Voice Content
+export interface ZaloVoiceContent {
+  href: string;
+  params?: string; // Chứa duration
+}
+
+/**
+ * Payload tin nhắn Zalo (Cấu trúc Hợp nhất)
  */
 export type ZaloMessage = {
   threadId: string;
   isSelf: boolean;
-  type: number;
+  type: number; // 0: User, 1: Group
   data: {
+    msgId: string;
+    cliMsgId: string;
+    // Các loại tin nhắn phổ biến: "webchat", "chat.photo", "chat.sticker", "chat.voice", "chat.recommended"
+    msgType: string;
     uidFrom: string;
     dName: string;
-    content: string | object;
     ts: string;
+
+    // Content đa hình
+    content:
+      | string
+      | ZaloStickerContent
+      | ZaloAttachmentContent
+      | ZaloVoiceContent;
+
+    // Thông tin Reply
+    quote?: {
+      ownerId: string;
+      msg: string;
+      attach?: string;
+      fromD: string;
+    };
+
+    // Thông tin Mention
+    mentions?: Array<{
+      uid: string;
+      pos: number;
+      len: number;
+    }>;
   };
 };
 
-/**
- * Thông tin tài khoản (Bot) đã đăng nhập.
- * (Trích xuất từ 'User' của zca-js)
- */
 export type AccountInfo = {
   userId: string;
   displayName: string;
@@ -91,10 +160,10 @@ export type AccountInfo = {
  * (Trích xuất từ 'User' hoặc 'GroupInfo' của zca-js)
  */
 export type ThreadInfo = {
-  id: string; // userId (bạn bè) hoặc groupId (nhóm)
-  name: string; // displayName (bạn bè) hoặc name (nhóm)
-  avatar: string; // avatar (cả hai)
-  type: 0 | 1; // 0 = User, 1 = Group
+  id: string;
+  name: string;
+  avatar: string;
+  type: 0 | 1;
 };
 
 /**
@@ -128,14 +197,6 @@ export type {
   FindUserResponse,
   GetSentFriendRequestResponse,
   GetFriendRecommendationsResponse,
-};
-/**
- * THÊM MỚI (Lô Cache): Kiểu dữ liệu trả về từ API getAllFriends (dựa trên tài liệu)
- */
-export type GetAllFriendsResponse = User[];
-
-// PHẦN 2: QUẢN LÝ NHÓM
-export type {
   GroupInfo,
   CreateGroupOptions,
   CreateGroupResponse,
@@ -155,6 +216,18 @@ export type {
   GetPendingGroupMembersUserInfo,
   ReviewPendingMemberRequestStatus,
   GroupMemberProfile,
+};
+
+// --- THÊM MỚI (NÂNG CẤP ĐA PHƯƠNG TIỆN) ---
+// SỬA LỖI BUILD: Chỉ re-export 'type'
+export type {
+  MessageContent,
+  SendVoiceOptions,
+  SendVoiceResponse,
+  SendVideoOptions,
+  SendVideoResponse,
+  SendLinkOptions,
+  SendLinkResponse,
 };
 
 // Placeholder cho các kiểu phức tạp hơn (nếu zca-js không export)
@@ -193,9 +266,12 @@ export type VocabularyExplanation = {
  */
 export type VocabularyWord = {
   word: string;
+  wordVoice?: string; // URL âm thanh
+  wordImage?: string; // URL hình ảnh
   ipa: string;
   meaning: string;
   example: string;
+  exampleVoice?: string; // URL âm thanh
   explanation: VocabularyExplanation[];
 };
 
@@ -215,10 +291,13 @@ export type VocabularyApiResponse = {
  * Lưu trữ thông tin hợp nhất về một người dùng.
  */
 export type UserCacheEntry = {
-  id: string; // UID
+  id: string;
   name: string;
   avatar: string;
   isFriend: boolean;
   phoneNumber: string | null;
-  commonGroups: Set<string>; // Set chứa các Group ID chung
+  commonGroups: Set<string>;
 };
+
+// Type cho getAllFriendsAction (Mảng User)
+export type GetAllFriendsResponse = User[];
