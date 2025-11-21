@@ -14,12 +14,13 @@ import {
   ZaloAttachmentContent,
   ZaloStickerContent,
   ZaloVoiceContent,
+  ThreadType, // Import enum
 } from "@/lib/types/zalo.types";
 import { Avatar } from "@/app/components/ui/Avatar";
 // THÊM MỚI: Import IconBookOpen
 import { IconInfo, IconSend, IconBookOpen } from "@/app/components/ui/Icons";
-
-// --- COMPONENT HIỂN THỊ NỘI DUNG ĐA DẠNG ---
+// Import Action Test Mới
+import { runVocabularyTestFormatsAction } from "@/lib/actions/test.actions";
 
 /** 1. Hiển thị Ảnh */
 const PhotoMessage = ({ content }: { content: ZaloAttachmentContent }) => {
@@ -145,7 +146,9 @@ export function ChatFrame({
   userCache: Record<string, UserCacheEntry>;
 }) {
   const [messageContent, setMessageContent] = useState("");
-  // SỬA ĐỔI: Xóa state `isSending` cục bộ, sử dụng prop `isSendingMessage`
+  // State riêng cho nút Test
+  const [isTestingFormat, setIsTestingFormat] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Tự cuộn xuống khi có tin nhắn mới
@@ -172,6 +175,33 @@ export function ChatFrame({
     if (topic && topic.trim()) {
       onSetError(null);
       onSendVocabulary(topic.trim(), thread.type);
+    }
+  };
+  const handleTestFormats = async () => {
+    if (!thread || isTestingFormat) return;
+
+    if (
+      !confirm(
+        `Gửi bộ test "Power Nap" (3 format + Media) đến hội thoại "${thread.name}"?`,
+      )
+    ) {
+      return;
+    }
+
+    setIsTestingFormat(true);
+    onSetError(null);
+    try {
+      // Gọi Server Action
+      // Chuyển thread.type (0/1) sang ThreadType enum (0/1) - tương thích
+      await runVocabularyTestFormatsAction(
+        thread.id,
+        thread.type as ThreadType,
+      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Lỗi test";
+      onSetError(msg);
+    } finally {
+      setIsTestingFormat(false);
     }
   };
 
@@ -326,13 +356,25 @@ export function ChatFrame({
           <button
             type="button"
             onClick={triggerSendVocabulary}
-            disabled={isSendingMessage || isSendingVocab}
+            disabled={isSendingMessage || isSendingVocab || isTestingFormat}
             className="rounded-lg bg-purple-600 p-3 text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-600"
+            title="Gửi Từ vựng (API)"
           >
-            {isSendingVocab ? (
+            {isSendingVocab ? "⏳" : <IconBookOpen className="h-6 w-6" />}
+          </button>
+
+          {/* THÊM MỚI: Nút Test Formats */}
+          <button
+            type="button"
+            onClick={handleTestFormats}
+            disabled={isSendingMessage || isSendingVocab || isTestingFormat}
+            className="rounded-lg bg-orange-600 p-3 text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-gray-600"
+            title="Test Hardcode Formats (Power Nap)"
+          >
+            {isTestingFormat ? (
               <span className="animate-spin">⏳</span>
             ) : (
-              <IconBookOpen className="h-6 w-6" />
+              <span className="font-bold text-lg">🧪</span>
             )}
           </button>
 

@@ -48,9 +48,9 @@ async function runTests() {
   // --- CẤU HÌNH KIỂM THỬ (TEST CONFIG) ---
   // Đặt 'USE_HARDCODED_ARGS' là 'true' để sử dụng các giá trị hardcode bên dưới.
   // Đặt là 'false' để đọc từ dòng lệnh (command line).
-  const USE_HARDCODED_ARGS = false;
-  const HARDCODED_THREAD_ID = "2496439327945395994"; // <-- THAY ID CỦA BẠN VÀO ĐÂY
-  const HARDCODED_TYPE = 1; // <-- THAY TYPE (0 = User, 1 = Group)
+  const USE_HARDCODED_ARGS = true;
+  const HARDCODED_THREAD_ID = "8459098330289347035"; // <-- THAY ID CỦA BẠN VÀO ĐÂY
+  const HARDCODED_TYPE = 0; // <-- THAY TYPE (0 = User, 1 = Group)
   // -------------------------------------
 
   let threadId, type;

@@ -256,12 +256,18 @@ export class ZaloSingletonService {
           const sticker = content as unknown as ZaloStickerContent;
 
           if (sticker.id && sticker.catId) {
-            console.log(`[Echo] Gửi lại Sticker ID: ${sticker.id}`);
-            // FIX TYPE: Ép kiểu payload sang 'any' để tránh lỗi type definition thiếu field
+            // DEBATE FIX: Chuyển đổi ID sang String để an toàn.
+            const strStickerId = Number(sticker.id);
+            const strCateId = Number(sticker.catId);
+
+            console.log(
+              `[Echo] Gửi lại Sticker: ID=${strStickerId}, CatID=${strCateId}`,
+            );
+
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const stickerPayload: any = {
-              stickerId: sticker.id,
-              cateId: sticker.catId,
+              id: strStickerId, // <--- Thay đổi quan trọng: stickerId -> id
+              cateId: strCateId, // Giữ nguyên cateId
               type: sticker.type || 1,
             };
             this.api?.sendSticker(stickerPayload, msg.threadId);
