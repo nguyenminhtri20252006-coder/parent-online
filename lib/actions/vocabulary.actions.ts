@@ -9,7 +9,9 @@
  */
 
 import { sendMessageAction } from "@/lib/actions/chat.actions";
-import { VocabularyApiResponse } from "@/lib/types/zalo.types";
+// FIX: Import từ vocabulary.types.ts
+import { VocabularyApiResponse } from "@/lib/types/vocabulary.types";
+import { ThreadType } from "@/lib/types/zalo.types";
 
 /**
  * Định dạng JSON trả về từ API Từ vựng thành một tin nhắn string.
@@ -53,7 +55,7 @@ function formatVocabularyMessage(
 export async function sendVocabularyMessageAction(
   groupId: string,
   topic: string,
-  threadType: 0 | 1, // THÊM MỚI
+  threadType: ThreadType,
 ) {
   console.log(
     `[Action] Yêu cầu sendVocabularyMessageAction cho ${groupId} (Type: ${threadType}), topic: ${topic}`,
@@ -66,23 +68,14 @@ export async function sendVocabularyMessageAction(
       "https://n8n-lhu.giize.com/webhook/vocabulary",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ID: groupId, // Gửi ID nhóm
-          Topic: topic, // Gửi Topic
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ID: groupId, Topic: topic }),
       },
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `API Từ vựng báo lỗi ${response.status}: ${
-          errorText || "Lỗi không xác định từ API"
-        }`,
-      );
+      throw new Error(`API Từ vựng lỗi ${response.status}: ${errorText}`);
     }
 
     apiResponse = await response.json();
@@ -92,25 +85,17 @@ export async function sendVocabularyMessageAction(
       throw new Error("API Từ vựng trả về dữ liệu không hợp lệ.");
     }
   } catch (error: unknown) {
-    console.error("[Action Error] Lỗi khi fetch API Từ vựng:", error);
-    throw new Error(
-      error instanceof Error ? error.message : "Lỗi kết nối đến API Từ vựng",
-    );
+    console.error("[Action Error] Lỗi API:", error);
+    throw new Error(error instanceof Error ? error.message : "Lỗi API");
   }
 
-  // 2. Định dạng tin nhắn
   const formattedMessage = formatVocabularyMessage(apiResponse, topic);
 
-  // 3. Gửi tin nhắn vào nhóm Zalo (sử dụng Action hiện có)
   try {
-    await sendMessageAction(formattedMessage, groupId, threadType); // SỬA ĐỔI: Sử dụng threadType
+    await sendMessageAction(formattedMessage, groupId, threadType);
     return { success: true };
   } catch (error: unknown) {
-    console.error("[Action Error] Lỗi khi gửi tin nhắn Zalo:", error);
-    throw new Error(
-      error instanceof Error
-        ? error.message
-        : "Lỗi gửi tin nhắn từ vựng vào Zalo",
-    );
+    console.error("[Action Error] Lỗi gửi Zalo:", error);
+    throw new Error(error instanceof Error ? error.message : "Lỗi gửi Zalo");
   }
 }

@@ -1,4 +1,11 @@
-import { VocabularyWord, MessageContent } from "@/lib/types/zalo.types";
+/**
+ * lib/utils/template-parser.ts
+ * Bộ xử lý Template tin nhắn.
+ */
+
+// FIX: Import từ vocabulary.types.ts
+import { VocabularyWord } from "@/lib/types/vocabulary.types";
+import { MessageContent } from "@/lib/types/zalo.types";
 
 // --- KHO MẪU (TEMPLATE STORE) ---
 // Sử dụng cú pháp:

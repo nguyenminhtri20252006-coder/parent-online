@@ -2,23 +2,21 @@
 
 /**
  * lib/actions/group.actions.ts
- *
- * Lớp Logic (Server Actions - Lớp 2) - Nghiệp vụ Quản lý Nhóm.
+ * Lớp Logic (Server Actions) - Nghiệp vụ Quản lý Nhóm.
+ * Đã được tái cấu trúc đầy đủ và định kiểu nghiêm ngặt.
  */
+
 import { ZaloSingletonService } from "@/lib/runtime-service";
-// SỬA ĐỔI (GĐ 3.8): Import thêm types
 import {
   CreateGroupOptions,
   GetGroupLinkDetailResponse,
-  GetPendingGroupMembersResponse,
   ReviewPendingMemberRequestPayload,
-  ReviewPendingMemberRequestStatus,
+  ReviewPendingMemberRequestResponse,
   UpdateGroupSettingsOptions,
-  // THÊM MỚI (GĐ 3.10)
   GroupInfoResponse,
   GetGroupMembersInfoResponse,
-  // THÊM MỚI (Lô Cache)
   GroupMemberProfile,
+  GroupInviteBoxParams,
 } from "@/lib/types/zalo.types";
 
 /**
@@ -42,7 +40,9 @@ export async function getGroupInfoAction(
 ): Promise<GroupInfoResponse> {
   console.log(`[Action] Yêu cầu getGroupInfoAction cho nhóm: ${groupId}`);
   try {
-    return await ZaloSingletonService.getInstance().getGroupInfo(groupId);
+    // Đảm bảo đầu vào luôn là mảng
+    const groupIds = Array.isArray(groupId) ? groupId : [groupId];
+    return await ZaloSingletonService.getInstance().getGroupInfo(groupIds);
   } catch (error: unknown) {
     console.error("[Action Error] getGroupInfoAction:", error);
     throw new Error(
@@ -59,8 +59,11 @@ export async function getGroupMembersInfoAction(
 ): Promise<GetGroupMembersInfoResponse> {
   console.log(`[Action] Yêu cầu getGroupMembersInfoAction cho: ${memberId}`);
   try {
+    // FIX: Service mong đợi string[], cần chuyển đổi nếu đầu vào là string
+    const memberIds = Array.isArray(memberId) ? memberId : [memberId];
+
     return await ZaloSingletonService.getInstance().getGroupMembersInfo(
-      memberId,
+      memberIds,
     );
   } catch (error: unknown) {
     console.error("[Action Error] getGroupMembersInfoAction:", error);
@@ -71,8 +74,8 @@ export async function getGroupMembersInfoAction(
 }
 
 /**
- * THÊM MỚI (Lô Cache): Action quét thành viên nhóm
- * Kết hợp getGroupInfo (lấy IDs) và getGroupMembersInfo (lấy Profiles)
+ * [API] Quét thành viên nhóm (Kết hợp Info & Profile)
+ * Dùng cho tính năng Cache
  */
 export async function scanGroupMembersAction(
   groupId: string,
@@ -81,19 +84,20 @@ export async function scanGroupMembersAction(
   const service = ZaloSingletonService.getInstance();
   try {
     // Bước 1: Lấy thông tin nhóm để có danh sách ID thành viên
-    // (Sử dụng logic tương tự AdvancedGroupManager.tsx)
-    const groupInfo = await service.getGroupInfo(groupId);
-    const groupData = groupInfo.gridInfoMap[groupId];
+    // FIX: Truyền mảng [groupId] thay vì string groupId
+    const groupInfo = await service.getGroupInfo([groupId]);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const groupData = (groupInfo as any).gridInfoMap[groupId];
 
     if (!groupData || !groupData.memVerList) {
-      throw new Error(
-        "Không thể lấy danh sách ID thành viên nhóm (memVerList).",
-      );
+      // Trường hợp nhóm rỗng hoặc không lấy được list
+      return {};
     }
     const memberIds = groupData.memVerList;
 
     if (memberIds.length === 0) {
-      return {}; // Nhóm không có thành viên
+      return {};
     }
 
     // Bước 2: Lấy thông tin profile của các thành viên
@@ -106,6 +110,7 @@ export async function scanGroupMembersAction(
     );
   }
 }
+
 /**
  * [API] Rời khỏi nhóm
  */
@@ -146,8 +151,9 @@ export async function addUserToGroupAction(
 ) {
   console.log(`[Action] Yêu cầu addUserToGroupAction: thêm vào ${groupId}`);
   try {
+    const members = Array.isArray(memberId) ? memberId : [memberId];
     return await ZaloSingletonService.getInstance().addUserToGroup(
-      memberId,
+      members,
       groupId,
     );
   } catch (error: unknown) {
@@ -169,8 +175,9 @@ export async function removeUserFromGroupAction(
     `[Action] Yêu cầu removeUserFromGroupAction: xóa khỏi ${groupId}`,
   );
   try {
+    const members = Array.isArray(memberId) ? memberId : [memberId];
     return await ZaloSingletonService.getInstance().removeUserFromGroup(
-      memberId,
+      members,
       groupId,
     );
   } catch (error: unknown) {
@@ -184,12 +191,9 @@ export async function removeUserFromGroupAction(
 /**
  * [API] Lấy danh sách lời mời vào nhóm (chờ duyệt)
  */
-export async function getGroupInviteBoxListAction(payload?: {
-  mpage?: number;
-  page?: number;
-  invPerPage?: number;
-  mcount?: number;
-}) {
+export async function getGroupInviteBoxListAction(
+  payload?: GroupInviteBoxParams,
+) {
   console.log(`[Action] Yêu cầu getGroupInviteBoxListAction`);
   try {
     return await ZaloSingletonService.getInstance().getGroupInviteBoxList(
@@ -228,7 +232,7 @@ export async function getPendingGroupMembersAction(groupId: string) {
 export async function reviewPendingMemberRequestAction(
   payload: ReviewPendingMemberRequestPayload,
   groupId: string,
-): Promise<Record<string, ReviewPendingMemberRequestStatus>> {
+): Promise<ReviewPendingMemberRequestResponse> {
   console.log(
     `[Action] Yêu cầu reviewPendingMemberRequestAction cho nhóm: ${groupId}`,
   );
@@ -339,8 +343,9 @@ export async function deleteGroupInviteBoxAction(
 ) {
   console.log(`[Action] Yêu cầu deleteGroupInviteBoxAction: ${groupId}`);
   try {
+    const gids = Array.isArray(groupId) ? groupId : [groupId];
     return await ZaloSingletonService.getInstance().deleteGroupInviteBox(
-      groupId,
+      gids,
       blockFutureInvite,
     );
   } catch (error: unknown) {

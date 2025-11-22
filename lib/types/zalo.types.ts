@@ -1,254 +1,66 @@
 /**
  * lib/types/zalo.types.ts
- *
- * Nguồn sự thật duy nhất (SSOT) cho tất cả các kiểu dữ liệu (Types)
- * và hằng số (Constants) của Zalo trong toàn bộ dự án.
- *
- * CẬP NHẬT (GĐ 5 - Sửa lỗi Build):
- * - Thay đổi TẤT CẢ import từ 'zca-js' thành 'import type' để ngăn
- * Next.js/Turbopack kéo runtime code của 'zca-js' (chứa 'node:fs')
- * vào Client Component bundle.
- * - Xóa import 'ThreadType' (là enum, một giá trị runtime) từ 'zca-js'.
- * - Định nghĩa 'ThreadType' cục bộ (locally) để sử dụng an toàn trong cả client và server.
- * - Thay đổi TẤT CẢ re-export từ 'zca-js' thành 'export type'.
+ * Nguồn sự thật duy nhất (SSOT).
+ * Đã loại bỏ hoàn toàn 'any' và thay thế bằng Strict Types.
  */
 
-// Import CHỈ CÁC TYPES từ 'zca-js'
 import type {
   User,
   GroupInfo,
-  ZBusinessPackage,
-  Gender,
-  AttachmentSource,
-  GroupTopic,
-  GroupSetting,
+  MessageContent as ZcaMessageContent, // Import gốc
   FindUserResponse,
-  GetSentFriendRequestResponse,
   GetFriendRecommendationsResponse,
+  GetSentFriendRequestResponse,
   CreateGroupOptions,
-  CreateGroupResponse,
-  GetAllGroupsResponse,
   GroupInfoResponse,
   GetGroupMembersInfoResponse,
-  AddUserToGroupResponse,
-  RemoveUserFromGroupResponse,
-  GetGroupBlockedMemberResponse,
-  GetGroupInviteBoxListResponse,
-  GetPendingGroupMembersResponse,
-  ReviewPendingMemberRequestResponse,
-  UpdateGroupSettingsResponse,
-  GetGroupLinkDetailResponse,
-  FriendRecommendationsRecommItem,
-  SentFriendRequestInfo,
-  GetPendingGroupMembersUserInfo,
-  ReviewPendingMemberRequestStatus,
   GroupMemberProfile,
-  // --- NÂNG CẤP ĐA PHƯƠNG TIỆN ---
-  MessageContent,
-  SendVoiceOptions,
-  SendVoiceResponse,
-  SendVideoOptions,
-  SendVideoResponse,
-  SendLinkOptions,
-  SendLinkResponse,
+  // Import API để mở rộng type nếu cần
+  API,
+  // Import các Response Types từ zca-js để re-export
+  ReviewPendingMemberRequestResponse,
+  GetGroupLinkDetailResponse,
 } from "zca-js";
 
-// --- CÁC HẰNG SỐ (CONSTANTS) ---
+// =============================================================================
+// 1. FIX LỖI THIẾU TYPE CỦA THƯ VIỆN (Type Augmentation/Workaround)
+// =============================================================================
 
-export const ZALO_EVENTS = {
-  // Sự kiện khi QR được tạo (gửi QR base64)
-  QR_GENERATED: "qr_generated",
-  // Sự kiện khi đăng nhập thành công
-  LOGIN_SUCCESS: "login_success",
-  // Sự kiện khi đăng nhập thất bại
-  LOGIN_FAILURE: "login_failure",
-  // Sự kiện khi có tin nhắn mới (gửi payload tin nhắn)
-  NEW_MESSAGE: "new_message",
-  // Báo cáo trạng thái chung
-  STATUS_UPDATE: "status_update",
-  // THÊM MỚI: Sự kiện khi session (token) được tạo/sẵn sàng
-  SESSION_GENERATED: "session_generated",
-};
-
-// --- SỬA LỖI BUILD: Định nghĩa ThreadType cục bộ ---
-// Đây là một enum, là một giá trị runtime.
-// Import nó từ 'zca-js' sẽ kéo toàn bộ thư viện vào client.
-// Định nghĩa nó ở đây sẽ giúp client an toàn.
-export enum ThreadType {
-  User = 0,
-  Group = 1,
+// Type cho API Gửi Media (Proxy)
+export interface SendVoiceOptions {
+  voiceUrl: string;
+  ttl?: number;
 }
 
-// --- CÁC KIỂU DỮ LIỆU (TYPES) CƠ BẢN ---
-
-export type LoginState = "IDLE" | "LOGGING_IN" | "LOGGED_IN" | "ERROR";
-
-/**
- * THÊM MỚI: Định nghĩa Content Đa phương tiện
- */
-
-// 1. Sticker Content (từ Log thực tế)
-export interface ZaloStickerContent {
-  id: number;
-  catId: number; // Log trả về catId
-  type: number;
+export interface SendVideoOptions {
+  videoUrl: string;
+  thumbnailUrl: string;
+  duration: number;
+  width: number;
+  height: number;
+  msg?: string;
+  ttl?: number;
 }
 
-// 2. Attachment Content (Photo, Link, File)
-export interface ZaloAttachmentContent {
-  title: string;
-  description: string;
-  href: string; // Link ảnh gốc hoặc Link web
-  thumb: string; // Link thumbnail
-  params?: string; // JSON string chứa width, height, duration...
+export interface SendLinkOptions {
+  link: string;
+  msg?: string;
+  ttl?: number;
 }
 
-// 3. Voice Content
-export interface ZaloVoiceContent {
-  href: string;
-  params?: string; // Chứa duration
-}
-
-// 4. THÊM MỚI: Video Content
-export interface ZaloVideoContent {
-  href: string; // Link video (mp4)
-  thumb: string; // Link thumbnail
-  duration?: number; // Thời lượng (ms)
-  fileSize?: number; // Kích thước file
-  width?: number;
-  height?: number;
-  params?: string; // JSON string bổ sung
-}
-
-/**
- * Payload tin nhắn Zalo (Cấu trúc Hợp nhất)
- */
-export type ZaloMessage = {
-  threadId: string;
-  isSelf: boolean;
-  type: number; // 0: User, 1: Group
-  data: {
-    msgId: string;
-    cliMsgId: string;
-    // Các loại tin nhắn phổ biến: "webchat", "chat.photo", "chat.sticker", "chat.voice", "chat.recommended"
-    msgType: string;
-    uidFrom: string;
-    dName: string;
-    ts: string;
-
-    // Content đa hình
-    content:
-      | string
-      | ZaloStickerContent
-      | ZaloAttachmentContent
-      | ZaloVoiceContent
-      | ZaloVideoContent; // <--- THÊM MỚI
-
-    // Thông tin Reply
-    quote?: {
-      ownerId: string;
-      msg: string;
-      attach?: string;
-      fromD: string;
-    };
-
-    // Thông tin Mention
-    mentions?: Array<{
-      uid: string;
-      pos: number;
-      len: number;
-    }>;
-  };
-};
-
-export type AccountInfo = {
-  userId: string;
-  displayName: string;
-  avatar: string;
-};
-
-/**
- * Thông tin hội thoại (đã hợp nhất).
- * (Trích xuất từ 'User' hoặc 'GroupInfo' của zca-js)
- */
-export type ThreadInfo = {
-  id: string;
-  name: string;
-  avatar: string;
-  type: 0 | 1;
-};
-
-/**
- * Định nghĩa kiểu dữ liệu cho Credentials/Session
- */
-export type ZaloCredentials = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cookie: any;
-  imei: string;
-  userAgent: string;
-};
-
-/**
- * Định nghĩa kiểu dữ liệu 'ZaloUser' (Linh hoạt)
- * (Dùng riêng cho getAccountInfo vì cấu trúc trả về là { profile: ... })
- */
-export type ZaloUser = {
-  userId: string;
-  displayName: string;
-  zaloName: string;
-  avatar: string;
-};
-
-// --- TYPES CHO API (Dựa trên tài liệu) ---
-// (Đây là các kiểu dữ liệu placeholder để Lớp Action và Service có thể biên dịch)
-// (Chúng ta sẽ định nghĩa chúng đầy đủ hơn khi cần)
-
-// PHẦN 1: QUẢN LÝ BẠN BÈ
-export type {
-  User,
-  FindUserResponse,
-  GetSentFriendRequestResponse,
-  GetFriendRecommendationsResponse,
-  GroupInfo,
-  CreateGroupOptions,
-  CreateGroupResponse,
-  GetAllGroupsResponse,
-  GroupInfoResponse,
-  GetGroupMembersInfoResponse,
-  AddUserToGroupResponse,
-  RemoveUserFromGroupResponse,
-  GetGroupBlockedMemberResponse,
-  GetGroupInviteBoxListResponse,
-  GetPendingGroupMembersResponse,
-  ReviewPendingMemberRequestResponse,
-  UpdateGroupSettingsResponse,
-  GetGroupLinkDetailResponse,
-  FriendRecommendationsRecommItem,
-  SentFriendRequestInfo,
-  GetPendingGroupMembersUserInfo,
-  ReviewPendingMemberRequestStatus,
-  GroupMemberProfile,
-};
-
-// --- THÊM MỚI (NÂNG CẤP ĐA PHƯƠNG TIỆN) ---
-// SỬA LỖI BUILD: Chỉ re-export 'type'
-export type {
-  MessageContent,
-  SendVoiceOptions,
-  SendVoiceResponse,
-  SendVideoOptions,
-  SendVideoResponse,
-  SendLinkOptions,
-  SendLinkResponse,
-};
-
-// Placeholder cho các kiểu phức tạp hơn (nếu zca-js không export)
-export type ReviewPendingMemberRequestPayload = {
-  members: string | string[];
+// Type cho Group Actions
+export interface ReviewPendingMemberRequestPayload {
+  members: string[];
   isApprove: boolean;
-};
+}
 
-export type UpdateGroupSettingsOptions = {
+export interface ReviewPendingMemberRequestStatus {
+  uid: string;
+  status: number; // 0: Failed, 1: Success
+  error?: string;
+}
+
+export interface UpdateGroupSettingsOptions {
   blockName?: boolean;
   signAdminMsg?: boolean;
   setTopicOnly?: boolean;
@@ -258,54 +70,160 @@ export type UpdateGroupSettingsOptions = {
   lockCreatePoll?: boolean;
   lockSendMsg?: boolean;
   lockViewMember?: boolean;
-};
+}
 
+// Định nghĩa lại interface mở rộng cho API nếu thư viện thiếu type sendImage
+export interface ExtendedAPI extends API {
+  sendImage(
+    buffer: Buffer,
+    threadId: string,
+    type: number, // 0: User, 1: Group
+    caption?: string,
+  ): Promise<void>;
+}
+
+// Type cho tham số getGroupInviteBoxList (Fix lỗi any trong hình 1)
+export interface GroupInviteBoxParams {
+  mpage?: number;
+  page?: number;
+  invPerPage?: number;
+  mcount?: number;
+}
+
+// Type cho QR Callback Data
+export type QRCallbackData =
+  | string
+  | {
+      data?: {
+        image?: string;
+      };
+    };
+
+// =============================================================================
+// 2. RAW TYPES (Dữ liệu thô từ ZCA Listener)
+// =============================================================================
+
+export interface RawZaloMessageData {
+  msgId: string;
+  cliMsgId: string;
+  msgType: string;
+  uidFrom: string;
+  dName: string;
+  ts: string;
+  content: unknown;
+  quote?: {
+    ownerId: string;
+    msg: string;
+    attach?: string;
+    fromD: string;
+  };
+  mentions?: Array<{
+    uid: string;
+    pos: number;
+    len: number;
+  }>;
+}
+
+export interface RawZaloMessage {
+  type: number; // 0: User, 1: Group
+  threadId: string;
+  isSelf: boolean;
+  data: RawZaloMessageData;
+}
+
+// =============================================================================
+// 3. NORMALIZED CONTENT TYPES (Nội dung đã làm sạch)
+// =============================================================================
+
+export interface StandardSticker {
+  id: number;
+  cateId: number;
+  type: number;
+  url?: string;
+}
+
+export interface StandardPhoto {
+  url: string;
+  thumbnail: string;
+  width: number;
+  height: number;
+  size?: number;
+}
+
+export interface StandardVideo {
+  url: string;
+  thumbnail: string;
+  duration: number;
+  width: number;
+  height: number;
+}
+
+export interface StandardVoice {
+  url: string;
+  duration: number;
+}
+
+export interface StandardLink {
+  url: string;
+  title: string;
+  description: string;
+  thumbnail?: string;
+}
+
+export type NormalizedContent =
+  | { type: "text"; text: string; mentions?: unknown[] }
+  | { type: "sticker"; data: StandardSticker }
+  | { type: "photo"; data: StandardPhoto }
+  | { type: "video"; data: StandardVideo }
+  | { type: "voice"; data: StandardVoice }
+  | { type: "link"; data: StandardLink }
+  | { type: "unknown"; raw: unknown };
+
+// =============================================================================
+// 4. STANDARD MESSAGE OBJECT
+// =============================================================================
+
+export interface StandardMessage {
+  msgId: string;
+  threadId: string;
+  isGroup: boolean;
+  type: number; // Giữ lại raw type (0/1)
+  isSelf: boolean;
+  sender: {
+    uid: string;
+    name: string;
+    avatar?: string;
+  };
+  timestamp: number;
+  content: NormalizedContent;
+  quote?: {
+    text: string;
+    senderId: string;
+    attach?: string;
+  };
+}
+
+// =============================================================================
+// 5. CONSTANTS & ENUMS
+// =============================================================================
+
+export const ZALO_EVENTS = {
+  QR_GENERATED: "qr_generated",
+  LOGIN_SUCCESS: "login_success",
+  LOGIN_FAILURE: "login_failure",
+  NEW_MESSAGE: "new_message",
+  STATUS_UPDATE: "status_update",
+  SESSION_GENERATED: "session_generated",
+} as const;
+
+export enum ThreadType {
+  User = 0,
+  Group = 1,
+}
+
+export type LoginState = "IDLE" | "LOGGING_IN" | "LOGGED_IN" | "ERROR";
 export type ViewState = "chat" | "manage";
 
-// --- THÊM MỚI: TYPES CHO API TỪ VỰNG (BÊN NGOÀI) ---
-
-/**
- * Kiểu dữ liệu cho phần giải nghĩa (explanation) trong API từ vựng
- */
-export type VocabularyExplanation = {
-  term: string;
-  type: string;
-  meaning_vi: string;
-};
-
-/**
- * Kiểu dữ liệu cho một từ (word) trong API từ vựng
- */
-export type VocabularyWord = {
-  word: string;
-  type: string; // [NEW] Từ loại (Noun, Verb...)
-  ipa: string;
-  meaning: string; // Nghĩa tiếng Việt
-  usage?: string; // [NEW] Cách dùng (Optional)
-  example: string;
-  explanation: VocabularyExplanation[]; // List giải thích con
-
-  // Media
-  wordVoice?: string; // URL âm thanh
-  wordImage?: string; // URL hình ảnh
-  exampleVoice?: string; // URL âm thanh
-};
-
-/**
- * Kiểu dữ liệu cho toàn bộ phản hồi (response) từ API từ vựng
- */
-export type VocabularyApiResponse = {
-  id: number;
-  count: number;
-  words: VocabularyWord[];
-};
-
-// --- THÊM MỚI (Lô Cache): TYPES CHO BỘ ĐỆM (CACHE) NGƯỜI DÙNG ---
-
-/**
- * Kiểu dữ liệu cho một mục (entry) trong User Cache.
- * Lưu trữ thông tin hợp nhất về một người dùng.
- */
 export type UserCacheEntry = {
   id: string;
   name: string;
@@ -315,5 +233,35 @@ export type UserCacheEntry = {
   commonGroups: Set<string>;
 };
 
-// Type cho getAllFriendsAction (Mảng User)
-export type GetAllFriendsResponse = User[];
+// Legacy aliases
+export type ZaloMessage = RawZaloMessage;
+export type AccountInfo = {
+  userId: string;
+  displayName: string;
+  avatar: string;
+};
+export type ThreadInfo = {
+  id: string;
+  name: string;
+  avatar: string;
+  type: 0 | 1;
+};
+
+// FIX QUAN TRỌNG: Export Alias để các file cũ không bị lỗi import MessageContent
+export type MessageContent = ZcaMessageContent;
+
+export type {
+  User,
+  ZcaMessageContent,
+  GroupInfo,
+  FindUserResponse,
+  GetFriendRecommendationsResponse,
+  GetSentFriendRequestResponse,
+  CreateGroupOptions,
+  GroupInfoResponse,
+  GetGroupMembersInfoResponse,
+  GroupMemberProfile,
+  API,
+  ReviewPendingMemberRequestResponse,
+  GetGroupLinkDetailResponse,
+};

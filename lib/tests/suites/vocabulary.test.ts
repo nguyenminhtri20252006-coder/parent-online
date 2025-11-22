@@ -1,9 +1,7 @@
 import { sendMessageAction, sendVoiceAction } from "@/lib/actions/chat.actions";
-import {
-  ThreadType,
-  SendVoiceOptions,
-  VocabularyWord,
-} from "@/lib/types/zalo.types";
+import { ThreadType } from "@/lib/types/zalo.types";
+// FIX: Import từ vocabulary.types.ts
+import { VocabularyWord } from "@/lib/types/vocabulary.types";
 import {
   parseTemplate,
   TEMPLATE_4_CONVERSATIONAL,
@@ -67,7 +65,8 @@ export async function runVocabularyTest(threadId: string, type: ThreadType) {
       `[Mẫu ${i + 1}/${templates.length}] `,
     );
 
-    await sendMessageAction(msg, threadId, type);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await sendMessageAction(msg as any, threadId, type);
     await delay(2000);
   }
 
@@ -96,7 +95,8 @@ export async function runVocabularyTest(threadId: string, type: ThreadType) {
 
   // B. Text
   const textMsg = parseTemplate(TEMPLATE_5_MODERN_UI, SAMPLE_WORD, "");
-  await sendMessageAction(textMsg, threadId, type);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await sendMessageAction(textMsg as any, threadId, type);
   await delay(500);
 
   // C. Voice

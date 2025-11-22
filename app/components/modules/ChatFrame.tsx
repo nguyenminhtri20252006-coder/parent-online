@@ -168,7 +168,8 @@ function DebugMenu({
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full right-0 mb-2 w-56 rounded-lg border border-gray-600 bg-gray-900 p-2 shadow-xl z-50">
+        // FIX CSS: Đổi 'bottom-full mb-2' thành 'top-full mt-2' để popup hiển thị xuống dưới
+        <div className="absolute top-full right-0 mt-2 w-56 rounded-lg border border-gray-600 bg-gray-900 p-2 shadow-xl z-50">
           <h4 className="mb-2 border-b border-gray-700 pb-1 text-xs font-bold uppercase text-gray-400">
             Test Suites
           </h4>
