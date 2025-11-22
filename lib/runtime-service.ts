@@ -49,6 +49,7 @@ import {
   type ZaloStickerContent,
   type ZaloAttachmentContent,
   type ZaloVoiceContent,
+  type ZaloVideoContent,
 } from "@/lib/types/zalo.types";
 
 /**
@@ -101,7 +102,7 @@ export class ZaloSingletonService {
     this.zalo = new Zalo({
       imageMetadataGetter,
       selfListen: true,
-      logging: true, // Giữ log cơ bản của thư viện
+      logging: true,
     });
   }
 
@@ -256,21 +257,14 @@ export class ZaloSingletonService {
           const sticker = content as unknown as ZaloStickerContent;
 
           if (sticker.id && sticker.catId) {
-            // DEBATE FIX: Chuyển đổi ID sang String để an toàn.
-            const strStickerId = Number(sticker.id);
-            const strCateId = Number(sticker.catId);
-
-            console.log(
-              `[Echo] Gửi lại Sticker: ID=${strStickerId}, CatID=${strCateId}`,
+            this.api?.sendSticker(
+              {
+                id: Number(sticker.id),
+                cateId: Number(sticker.catId),
+                type: sticker.type || 1,
+              },
+              msg.threadId,
             );
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const stickerPayload: any = {
-              id: strStickerId, // <--- Thay đổi quan trọng: stickerId -> id
-              cateId: strCateId, // Giữ nguyên cateId
-              type: sticker.type || 1,
-            };
-            this.api?.sendSticker(stickerPayload, msg.threadId);
           }
         }
 
@@ -278,10 +272,9 @@ export class ZaloSingletonService {
         else if (msgType === "chat.photo" && typeof content === "object") {
           // FIX TYPE: Double cast
           const photo = content as unknown as ZaloAttachmentContent;
-          const url = photo.href || photo.thumb;
-          if (url) {
+          if (photo.href) {
             this.api?.sendMessage(
-              `Bot nhại ảnh: ${url}`,
+              `Bot nhại ảnh: ${photo.href}`,
               msg.threadId,
               msg.type as unknown as ThreadType,
             );
@@ -293,15 +286,75 @@ export class ZaloSingletonService {
           // FIX TYPE: Double cast
           const voice = content as unknown as ZaloVoiceContent;
           if (voice.href) {
-            this.api?.sendMessage(
-              `Bot nhại voice: ${voice.href}`,
+            this.api?.sendVoice(
+              { voiceUrl: voice.href, ttl: 0 },
               msg.threadId,
               msg.type as unknown as ThreadType,
             );
           }
         }
 
-        // E. Nhại Link (Recommended) -> Gửi lại Link
+        // E. Nhại Video (DEBUG MODE KÍCH HOẠT)
+        // Bỏ điều kiện 'typeof content === "object"' ở đây để bắt mọi trường hợp
+        else if (msgType === "chat.video.msg") {
+          // Bỏ qua kiểm tra typeof content object ở đây để bắt mọi case
+          if (typeof content === "object" && content !== null) {
+            const video = content as unknown as ZaloVideoContent;
+
+            // 1. Khởi tạo giá trị mặc định (Fallback)
+            let duration = 1000;
+            let width = 0; // Để 0 nếu không biết, nhưng tốt nhất là lấy từ params
+            let height = 0;
+
+            // 2. Cố gắng parse JSON từ params string
+            // Log raw cho thấy Zalo trả về duration, video_width, video_height trong chuỗi params
+            if (video.params && typeof video.params === "string") {
+              try {
+                console.log("[Echo Video] Parsing params:", video.params);
+                const paramsObj = JSON.parse(video.params);
+                // Cập nhật nếu parse thành công và giá trị hợp lệ
+                if (paramsObj.duration) duration = Number(paramsObj.duration);
+                if (paramsObj.video_width)
+                  width = Number(paramsObj.video_width);
+                if (paramsObj.video_height)
+                  height = Number(paramsObj.video_height);
+              } catch (err) {
+                console.error("[Echo Video] Lỗi parse params JSON:", err);
+              }
+            }
+
+            // Nếu không parse được, dùng fallback 640x480 (có rủi ro crash nhưng đỡ hơn 0x0)
+            if (width === 0) width = 640;
+            if (height === 0) height = 480;
+
+            console.log(
+              `[Echo Video] Metadata chuẩn bị gửi: ${width}x${height}, ${duration}ms`,
+            );
+
+            // 3. Gửi Video với Metadata chuẩn
+            if (video.href && video.thumb) {
+              const videoOptions: SendVideoOptions = {
+                videoUrl: video.href,
+                thumbnailUrl: video.thumb,
+                duration: duration, // Sử dụng giá trị thực
+                width: width, // Sử dụng giá trị thực
+                height: height, // Sử dụng giá trị thực
+                msg: "Bot nhại lại video 🎥",
+              };
+
+              this.api?.sendVideo(
+                videoOptions,
+                msg.threadId,
+                msg.type as unknown as ThreadType,
+              );
+            } else {
+              console.warn(
+                "[Echo Video] Thiếu href hoặc thumb, không thể nhại.",
+              );
+            }
+          }
+        }
+        // F. Link
         else if (
           msgType === "chat.recommended" &&
           typeof content === "object"

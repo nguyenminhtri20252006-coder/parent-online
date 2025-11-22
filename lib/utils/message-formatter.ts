@@ -46,7 +46,12 @@ export function formatVocabularyMessage(
   totalIndex: number = 1,
 ): MessageContent {
   // 1. Khởi tạo nội dung với chỉ mục
-  let fullText = `[${currentIndex}/${totalIndex}] \n`;
+  // SỬA ĐỔI: Nếu totalIndex > 1 (tức là đang chạy test loạt), thêm prefix đánh dấu
+  let fullText = "";
+  if (totalIndex > 1) {
+    fullText = `[Mẫu ${currentIndex}/${totalIndex}]\n`;
+  }
+
   const styles: ZaloStyle[] = [];
 
   template.forEach((step) => {
@@ -128,4 +133,65 @@ export const TEMPLATE_3_FLASHCARD: FormatStep[] = [
   { field: "ipa", styles: ["f_13"] },
   { text: "\n\n👉 Câu ví dụ:\n", styles: ["b"] },
   { field: "example", styles: [] },
+];
+
+// --- CÁC TEMPLATE MỚI (GĐ 2) ---
+
+export const TEMPLATE_4_CONVERSATIONAL: FormatStep[] = [
+  { text: "👋 ", styles: [] },
+  { text: "Chào bạn! Từ mới hôm nay là:\n\n", styles: ["b"] },
+  { text: "✨ " },
+  { field: "word", styles: ["b", "f_18", "c_0a52a6"] }, // Xanh dương đậm
+  { text: " ✨\n" },
+  { field: "ipa", styles: ["i", "f_13"] },
+  { text: "\n\n🤔 " },
+  { text: "Nghĩa là gì nhỉ?\n", styles: ["b"] },
+  { text: "➥ " },
+  { field: "meaning", styles: ["i"] },
+  { text: "\n\n🗣️ " },
+  { text: "Thử nói câu này xem:\n", styles: ["b"] },
+  { text: '"', styles: [] },
+  { field: "example", styles: [] },
+  { text: '"', styles: [] },
+];
+
+export const TEMPLATE_5_MODERN_UI: FormatStep[] = [
+  { text: "➖➖➖➖➖➖➖➖\n", styles: [] }, // Tạm bỏ c_gray vì sợ không hỗ trợ
+  { text: "💎 " },
+  { text: "WORD OF THE DAY\n", styles: ["b", "f_13"] },
+  { text: "➖➖➖➖➖➖➖➖\n\n", styles: [] },
+  { text: "🎯 " },
+  { field: "word", styles: ["b", "f_18", "c_15a85f"] }, // Xanh lá
+  { text: "\n" },
+  { text: "🔉 " },
+  { field: "ipa", styles: ["i"] },
+  { text: "\n\n💡 " },
+  { text: "Ý nghĩa:\n", styles: ["b"] },
+  { field: "meaning", styles: [] },
+  { text: "\n\n📢 " },
+  { text: "Ví dụ mẫu:\n", styles: ["b"] },
+  { field: "example", styles: [] },
+  { text: "\n➖➖➖➖➖➖➖➖" },
+];
+
+export const TEMPLATE_6_DICTIONARY: FormatStep[] = [
+  { text: "📖 " },
+  { text: "TỪ ĐIỂN ANH - VIỆT\n", styles: ["b", "c_db342e"] }, // Đỏ
+  { text: "────────────────\n", styles: [] },
+  { text: "🔵 " },
+  { field: "word", styles: ["b", "f_18"] },
+  { text: "  (noun)\n\n", styles: ["i", "f_13"] }, // Giả định type
+  { text: "🔹 " },
+  { text: "Phát âm: ", styles: ["b"] },
+  { field: "ipa", styles: [] },
+  { text: "\n" },
+  { text: "🔹 " },
+  { text: "Định nghĩa: ", styles: ["b"] },
+  { field: "meaning", styles: [] },
+  { text: "\n\n🔰 " },
+  { text: "Ví dụ minh họa:\n", styles: ["b"] },
+  { field: "example", styles: ["i"] }, // Ví dụ in nghiêng cho đẹp
+  { text: "\n\n🧩 " },
+  { text: "Giải thích thêm:\n", styles: ["b"] },
+  { field: "explanation_list", styles: [] },
 ];

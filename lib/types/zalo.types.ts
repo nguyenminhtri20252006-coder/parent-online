@@ -109,6 +109,17 @@ export interface ZaloVoiceContent {
   params?: string; // Chứa duration
 }
 
+// 4. THÊM MỚI: Video Content
+export interface ZaloVideoContent {
+  href: string; // Link video (mp4)
+  thumb: string; // Link thumbnail
+  duration?: number; // Thời lượng (ms)
+  fileSize?: number; // Kích thước file
+  width?: number;
+  height?: number;
+  params?: string; // JSON string bổ sung
+}
+
 /**
  * Payload tin nhắn Zalo (Cấu trúc Hợp nhất)
  */
@@ -130,7 +141,8 @@ export type ZaloMessage = {
       | string
       | ZaloStickerContent
       | ZaloAttachmentContent
-      | ZaloVoiceContent;
+      | ZaloVoiceContent
+      | ZaloVideoContent; // <--- THÊM MỚI
 
     // Thông tin Reply
     quote?: {
@@ -266,13 +278,17 @@ export type VocabularyExplanation = {
  */
 export type VocabularyWord = {
   word: string;
+  type: string; // [NEW] Từ loại (Noun, Verb...)
+  ipa: string;
+  meaning: string; // Nghĩa tiếng Việt
+  usage?: string; // [NEW] Cách dùng (Optional)
+  example: string;
+  explanation: VocabularyExplanation[]; // List giải thích con
+
+  // Media
   wordVoice?: string; // URL âm thanh
   wordImage?: string; // URL hình ảnh
-  ipa: string;
-  meaning: string;
-  example: string;
   exampleVoice?: string; // URL âm thanh
-  explanation: VocabularyExplanation[];
 };
 
 /**
