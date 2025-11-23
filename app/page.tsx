@@ -268,7 +268,6 @@ export default function BotControlPanel() {
   };
 
   const handleFetchAccountInfo = async () => {
-    console.log("[UI] Đang tải thông tin tài khoản...");
     setIsLoadingAccountInfo(true);
     setErrorMessage(null);
     try {
@@ -279,7 +278,7 @@ export default function BotControlPanel() {
         err instanceof Error ? err.message : "Lỗi không xác định";
       setErrorMessage(`Lỗi tải thông tin tài khoản: ${errorMsg}`);
     } finally {
-      setIsLoadingAccountInfo(false); // Tắt loading
+      setIsLoadingAccountInfo(false);
     }
   };
 
@@ -484,6 +483,10 @@ export default function BotControlPanel() {
     setIsLoggingIn(false); // SỬA ĐỔI: Đổi tên
     setSessionTokenForCopy(null);
     setView("chat"); // Reset view
+    setUserCache({});
+    setScannedGroups(new Set());
+    setIsScanningAll(false);
+    setScanStatus("");
 
     // 2. Gọi Server Action (không cần await, chạy nền)
     logoutAction();

@@ -51,15 +51,77 @@ export class MessageParser {
     // Helper: Ép kiểu cục bộ an toàn
     const c = content as Record<string, unknown>;
 
-    // A. TEXT
+    // A. TEXT & WEBCHAT (Rich Text)
     if (type === "webchat") {
-      const text =
-        typeof content === "string"
-          ? content
-          : typeof c?.msg === "string"
-          ? c.msg
-          : "";
-      return { type: "text", text: text };
+      type WebChatContent = {
+        title?: string;
+        description?: string;
+        msg?: string;
+        message?: string;
+        content?: string;
+        params?: string | { styles?: unknown[] };
+        styles?: unknown[];
+        mentions?: unknown[];
+      };
+
+      // Ép kiểu an toàn
+      const webChatData = content as WebChatContent;
+      let text = "";
+      let styles: unknown[] = [];
+
+      if (typeof content === "string") {
+        text = content;
+      } else if (typeof webChatData === "object" && webChatData !== null) {
+        // 1. Lấy Text: Ưu tiên 'title' (cho Rich Text) -> 'msg' -> 'description' -> các trường khác
+        text =
+          webChatData.title ||
+          webChatData.msg ||
+          webChatData.description ||
+          webChatData.message ||
+          webChatData.content ||
+          "";
+
+        if (Array.isArray(webChatData.styles)) {
+          styles = webChatData.styles;
+        } else if (typeof webChatData.params === "string") {
+          try {
+            const parsedParams = JSON.parse(webChatData.params);
+            if (parsedParams && Array.isArray(parsedParams.styles)) {
+              styles = parsedParams.styles;
+            }
+          } catch (e) {
+            // Ignore parse error
+          }
+        } else if (
+          typeof webChatData.params === "object" &&
+          webChatData.params !== null
+        ) {
+          if (
+            Array.isArray((webChatData.params as { styles?: unknown[] }).styles)
+          ) {
+            styles =
+              (webChatData.params as { styles?: unknown[] }).styles || [];
+          }
+        }
+      }
+
+      // [DEBUG] Log kết quả parse styles
+      if (styles.length > 0) {
+        // console.log(`[Parser] Extracted ${styles.length} styles.`);
+      }
+
+      const mentions = Array.isArray(webChatData?.mentions)
+        ? webChatData.mentions
+        : undefined;
+
+      return {
+        type: "text",
+        text: text,
+        mentions,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        styles: styles as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as NormalizedContent & { styles?: any[] };
     }
 
     // B. STICKER

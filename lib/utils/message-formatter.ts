@@ -4,8 +4,8 @@
  * Bộ xử lý (Processor) để chuyển đổi Dữ liệu Từ vựng + Template
  * thành nội dung tin nhắn Zalo có định dạng (Offset-based Styling).
  */
-
-import { VocabularyWord, MessageContent } from "@/lib/types/zalo.types";
+import { VocabularyWord } from "@/lib/types/vocabulary.types";
+import { MessageContent } from "@/lib/types/zalo.types";
 
 // Định nghĩa kiểu cho một bước trong Template
 export type FormatStep = {

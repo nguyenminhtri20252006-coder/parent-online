@@ -14,7 +14,7 @@ import {
   ZaloAttachmentContent,
   ZaloStickerContent,
   ZaloVoiceContent,
-  ZaloVideoContent, // <--- THÊM MỚI
+  ZaloVideoContent,
   ThreadType,
 } from "@/lib/types/zalo.types";
 import { Avatar } from "@/app/components/ui/Avatar";
@@ -30,15 +30,17 @@ import {
   testMediaAction,
   testVocabularyAction,
 } from "@/lib/actions/test.actions";
+// THÊM MỚI: Import StyledText
+import { StyledText } from "@/app/components/ui/StyledText";
+import { ZaloStyle } from "@/lib/utils/text-renderer";
 
 /** 1. Hiển thị Ảnh */
 const PhotoMessage = ({ content }: { content: ZaloAttachmentContent }) => {
   // Ưu tiên ảnh thumb để load nhanh, click vào href (HD) nếu cần (ở đây hiển thị đơn giản)
-  const imgSrc = content.thumb || content.href;
   return (
     <div className="overflow-hidden rounded-lg bg-black/20">
       <img
-        src={imgSrc}
+        src={content.thumb || content.href}
         alt="Photo"
         className="max-h-64 w-auto object-contain"
         loading="lazy"
@@ -222,12 +224,10 @@ export function ChatFrame({
   onToggleDetails,
   isEchoBotEnabled,
   onToggleEchoBot,
-  // THÊM MỚI: Props cho Gửi Từ vựng
   onSendVocabulary,
   isSendingMessage,
   isSendingVocab,
   onSetError,
-  // THÊM MỚI (Lô 3): Prop UserCache
   userCache,
 }: {
   thread: ThreadInfo | null;
@@ -304,13 +304,44 @@ export function ChatFrame({
   const renderMessageBody = (msg: ZaloMessage) => {
     const { msgType, content, quote } = msg.data;
     const renderContent = () => {
-      if (msgType === "webchat" && typeof content === "string") {
+      // 1. Xử lý Text & Rich Text
+      if (msgType === "webchat") {
+        let text = "";
+        let styles: ZaloStyle[] | undefined = undefined;
+
+        if (typeof content === "string") {
+          text = content;
+        } else if (typeof content === "object" && content !== null) {
+          // Ép kiểu để lấy msg và styles từ object content thô
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const c = content as any;
+
+          // [FIXED LOGIC] Ưu tiên 'title' (Rich Text) -> 'msg' -> 'description' -> 'content'
+          text =
+            c.title || c.msg || c.message || c.description || c.content || "";
+
+          // 1. Styles trực tiếp
+          if (Array.isArray(c.styles)) {
+            styles = c.styles;
+          }
+          // 2. Styles trong 'params' string JSON
+          else if (typeof c.params === "string") {
+            try {
+              const p = JSON.parse(c.params);
+              if (p && Array.isArray(p.styles)) {
+                styles = p.styles;
+              }
+            } catch (e) {
+              /* Ignore parse error */
+            }
+          }
+        }
+
         return (
-          <p className="whitespace-pre-wrap break-words text-white">
-            {content}
-          </p>
+          <StyledText text={text} styles={styles} className="text-white" />
         );
       }
+
       if (msgType === "chat.photo")
         return <PhotoMessage content={content as ZaloAttachmentContent} />;
       if (msgType === "chat.sticker")
@@ -319,14 +350,16 @@ export function ChatFrame({
         return <VoiceMessage content={content as ZaloVoiceContent} />;
       if (msgType === "chat.recommended")
         return <LinkMessage content={content as ZaloAttachmentContent} />;
+      if (msgType === "chat.video.msg")
+        return <VideoMessage content={content as ZaloVideoContent} />;
 
       return (
         <div className="rounded border border-dashed border-gray-500 p-2 text-xs text-gray-400">
           [Chưa hỗ trợ: {msgType}]
           <br />
-          {typeof content === "object"
+          {typeof content === "object" && content !== null
             ? JSON.stringify(content).slice(0, 50) + "..."
-            : content}
+            : String(content)}
         </div>
       );
     };
@@ -386,7 +419,6 @@ export function ChatFrame({
           const senderAvatar = senderInfo?.avatar || "";
 
           const avatarToShow = thread.type === 0 ? thread.avatar : senderAvatar;
-          const nameToShow = thread.type === 0 ? thread.name : senderName;
 
           return (
             <div

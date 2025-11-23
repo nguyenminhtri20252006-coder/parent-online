@@ -9,6 +9,7 @@ import {
   CreateGroupOptions,
   ReviewPendingMemberRequestPayload,
   UpdateGroupSettingsOptions,
+  MessageContent,
 } from "zca-js";
 import { globalZaloEmitter, ZALO_EVENTS } from "./event-emitter";
 import { MessageParser } from "@/lib/core/pipelines/message-parser";
@@ -20,9 +21,12 @@ import {
   GroupInviteBoxParams,
   QRCallbackData,
   SendVoiceOptions,
-  SendVideoOptions, // Import type Options từ API/UI
+  SendVideoOptions,
   SendLinkOptions,
-  StandardVideo, // Import type Standard của hệ thống
+  StandardVideo,
+  AccountInfo,
+  ThreadInfo,
+  ZaloAPIUser,
 } from "@/lib/types/zalo.types";
 import { promises as fsPromise } from "fs";
 import path from "path";
@@ -88,18 +92,19 @@ export class ZaloSingletonService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.zalo
       .loginQR({}, (qr: unknown) => {
+        type QRObject = { data?: { image?: string } };
+
         const qrData = qr as QRCallbackData;
         let base64 = "";
 
         if (typeof qrData === "string") {
           base64 = qrData;
-        } else if (
-          typeof qrData === "object" &&
-          qrData !== null &&
-          qrData.data &&
-          qrData.data.image
-        ) {
-          base64 = qrData.data.image;
+        } else if (typeof qrData === "object" && qrData !== null) {
+          // Ép kiểu an toàn
+          const qrObj = qrData as QRObject;
+          if (qrObj.data && qrObj.data.image) {
+            base64 = qrObj.data.image;
+          }
         }
 
         if (base64 && !base64.startsWith("data:image")) {
@@ -149,17 +154,17 @@ export class ZaloSingletonService {
       try {
         const rawMessage = rawMsg as RawZaloMessage;
 
-        // 2. Parse
+        // [DEBUG] Log raw message nhận được từ ZCA listener
+        // console.log("[Service] Listener Raw Message:", JSON.stringify(rawMessage.data.content));
+
         const stdMsg = this.parser.parse(rawMessage);
         if (!stdMsg) return;
 
-        // 3. Storage
-        await MockStorage.save(stdMsg);
+        // 3. Storage (Mock)
+        // await MockStorage.save(stdMsg);
 
-        // 4. UI Emit
         globalZaloEmitter.emit(ZALO_EVENTS.NEW_MESSAGE, rawMsg);
 
-        // 5. Echo
         if (this.isEchoBotEnabled && !stdMsg.isSelf) {
           await this.echoWorker.process(stdMsg);
         }
@@ -175,8 +180,17 @@ export class ZaloSingletonService {
     return this.api;
   }
 
-  public async sendMessage(content: string, threadId: string, type: number) {
-    return this.senderService.sendText(content, threadId, type === 1);
+  // [FIX] Cập nhật signature để chấp nhận MessageContent
+  public async sendMessage(
+    content: string | MessageContent,
+    threadId: string,
+    type: number,
+  ) {
+    if (typeof content === "string") {
+      return this.senderService.sendText(content, threadId, type === 1);
+    } else {
+      return this.checkApi().sendMessage(content, threadId, type === 1 ? 1 : 0);
+    }
   }
 
   public async logout() {
@@ -193,20 +207,64 @@ export class ZaloSingletonService {
     });
   }
 
-  public async getAccountInfo() {
-    return this.api?.fetchAccountInfo();
+  // [FIX] Map dữ liệu User -> AccountInfo
+  public async getAccountInfo(): Promise<AccountInfo | null> {
+    if (!this.api) {
+      return null;
+    }
+
+    try {
+      const response = await this.api.fetchAccountInfo();
+
+      if (!response) {
+        return null;
+      }
+
+      // Xử lý cấu trúc lồng nhau { profile: ... } hoặc trực tiếp
+      type APIResponse = { profile?: ZaloAPIUser } & Partial<ZaloAPIUser>;
+
+      const data = response as unknown as APIResponse;
+      let userData: ZaloAPIUser | undefined;
+
+      if (data.profile) {
+        userData = data.profile;
+      } else if (data.userId) {
+        userData = data as ZaloAPIUser;
+      }
+
+      if (!userData) {
+        return null;
+      }
+
+      // Fallback logic
+      const displayName = userData.displayName || userData.zaloName || "Bot";
+      const userId = userData.userId || "";
+      const avatar = userData.avatar || "";
+
+      return {
+        userId,
+        displayName,
+        avatar,
+      };
+    } catch (error) {
+      console.error("[Service] getAccountInfo Error:", error);
+      return null;
+    }
   }
-  public async getThreads() {
+
+  // [FIX] Map dữ liệu User[] -> ThreadInfo[]
+  public async getThreads(): Promise<ThreadInfo[]> {
     if (!this.api) return [];
-    const f = await this.api.getAllFriends();
-    return f.map((u) => ({
+    const friends = await this.api.getAllFriends();
+    return friends.map((u) => ({
       id: u.userId,
-      name: u.displayName,
+      name: u.displayName || u.zaloName || "Unknown",
       avatar: u.avatar,
       type: 0,
     }));
   }
 
+  // Các hàm proxy khác giữ nguyên
   public async findUser(phone: string) {
     return this.checkApi().findUser(phone);
   }
@@ -308,8 +366,6 @@ export class ZaloSingletonService {
       duration: opts.duration,
       width: opts.width,
       height: opts.height,
-      // msg và ttl của opts chưa dùng trong StandardVideo ở đây,
-      // nhưng SenderService.sendVideo sẽ tự xử lý hoặc mở rộng StandardVideo nếu cần
     };
     return this.senderService.sendVideo(standardVideo, tid, type === 1);
   }

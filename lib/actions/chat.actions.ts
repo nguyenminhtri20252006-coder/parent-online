@@ -1,12 +1,5 @@
 "use server";
 
-/**
- * lib/actions/chat.actions.ts
- *
- * Lớp Logic (Server Actions - Lớp 2) - Nghiệp vụ Chat & Lấy Dữ liệu.
- * Cầu nối giữa UI (Client) và Service (Server Stateful) cho các tác vụ nghiệp vụ chính.
- */
-
 import { ZaloSingletonService } from "@/lib/runtime-service";
 // SỬA ĐỔI: Import các type mới từ SSOT
 import {
@@ -26,40 +19,44 @@ import {
 export async function sendMessageAction(
   message: string | MessageContent,
   threadId: string,
-  type: ThreadType, // SỬA ĐỔI: Dùng enum ThreadType
+  type: ThreadType,
 ) {
   if (!message || !threadId) {
     return { success: false, error: "Thiếu message hoặc threadId" };
   }
-  // Cập nhật lệnh gọi để truyền 'type'
-  return ZaloSingletonService.getInstance().sendMessage(
-    message,
-    threadId,
-    type,
-  );
+
+  try {
+    // Gọi service để gửi tin
+    const result = await ZaloSingletonService.getInstance().sendMessage(
+      message,
+      threadId,
+      type,
+    );
+
+    // Trả về success: true kèm dữ liệu gốc (nếu cần)
+    return { success: true, data: result };
+  } catch (error: unknown) {
+    console.error("[Action Error] sendMessageAction:", error);
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Lỗi gửi tin nhắn không xác định";
+    return { success: false, error: errorMessage };
+  }
 }
 
-/**
- * [Step 1] Lấy thông tin tài khoản (Bot) đang đăng nhập
- */
 export async function getAccountInfoAction(): Promise<AccountInfo | null> {
-  console.log("[Action] Yêu cầu getAccountInfoAction...");
   try {
     return await ZaloSingletonService.getInstance().getAccountInfo();
   } catch (error) {
     console.error("[Action Error] getAccountInfoAction:", error);
-    // Ném lỗi về cho client component xử lý (trong try/catch)
     throw new Error(
       error instanceof Error ? error.message : "Lỗi không xác định ở Action",
     );
   }
 }
 
-/**
- * [Steps 2 & 3] Lấy danh sách hội thoại (Bạn bè & Nhóm)
- */
 export async function getThreadsAction(): Promise<ThreadInfo[]> {
-  console.log("[Action] Yêu cầu getThreadsAction...");
   try {
     return await ZaloSingletonService.getInstance().getThreads();
   } catch (error) {
@@ -79,11 +76,6 @@ export async function setEchoBotStateAction(isEnabled: boolean) {
   ZaloSingletonService.getInstance().setEchoBotState(isEnabled);
 }
 
-// --- THÊM MỚI (GĐ 5): ACTIONS ĐA PHƯƠNG TIỆN ---
-
-/**
- * [API] Gửi tin nhắn Voice (từ URL)
- */
 export async function sendVoiceAction(
   options: SendVoiceOptions,
   threadId: string,

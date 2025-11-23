@@ -14,14 +14,10 @@ function createSSEStream(controller: ReadableStreamDefaultController) {
 
   // LỖI: Thay thế 'any' bằng 'unknown'
   const sendEvent = (eventName: string, data: unknown) => {
-    // Định dạng một thông điệp SSE
     const message = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
     controller.enqueue(encoder.encode(message));
   };
 
-  // SỬA LỖI (KẾ HOẠCH E/F): Hàm gửi sự kiện dạng Thô (cho string)
-  // Chúng ta cần điều này vì QR code là string, không phải object
-  // và JSON.stringify() sẽ bọc nó trong dấu ngoặc kép ("..."), làm hỏng src của ảnh.
   const sendRawEvent = (eventName: string, rawData: string) => {
     const message = `event: ${eventName}\ndata: ${rawData}\n\n`;
     controller.enqueue(encoder.encode(message));
@@ -102,10 +98,9 @@ export async function GET(request: NextRequest) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      "X-Accel-Buffering": "no", // Tắt buffering cho Nginx
+      "X-Accel-Buffering": "no",
     },
   });
 }
 
-// Bắt buộc cho App Router
 export const dynamic = "force-dynamic";
