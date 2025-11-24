@@ -110,7 +110,7 @@ export function BotInterface({
 
   // State độ rộng
   const [menuWidth, setMenuWidth] = useState(260); // Menu trái
-  const [detailsWidth, setDetailsWidth] = useState(320); // Details phải (Mặc định 320px)
+  const [detailsWidth, setDetailsWidth] = useState(400); // Details phải (Mặc định 320px)
 
   // State điều khiển kéo thả: null | 'MENU' | 'DETAILS'
   const [resizingTarget, setResizingTarget] = useState<

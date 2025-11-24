@@ -193,6 +193,11 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
     fetchPendingMembers();
   }, [fetchPendingMembers]);
 
+  // [UX IMPROVEMENT] Nếu không có quyền (PERMISSION_DENIED), ẩn hoàn toàn section này đi
+  if (permissionStatus === "PERMISSION_DENIED") {
+    return null;
+  }
+
   const handleReview = async (memberId: string, isApprove: boolean) => {
     setIsProcessing((prev) => ({ ...prev, [memberId]: true }));
     try {
@@ -217,9 +222,7 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
       </h3>
 
       {/* Hiển thị thông báo dựa trên Status */}
-      {permissionStatus === "PERMISSION_DENIED" ? (
-        <PermissionDeniedMessage message="Bạn không phải là Admin/Owner." />
-      ) : permissionStatus === "FEATURE_DISABLED" ? (
+      {permissionStatus === "FEATURE_DISABLED" ? (
         <div className="mt-2 p-2 text-sm text-gray-400 bg-gray-800/50 rounded border border-gray-700">
           Chức năng duyệt thành viên chưa được bật.
         </div>

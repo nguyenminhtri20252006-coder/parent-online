@@ -127,7 +127,7 @@ export function DetailsPanel({
       // [UX UPGRADE] Sử dụng style inline cho width, fallback về w-80 (320px) nếu không có props
       style={{ width: customWidth ? `${customWidth}px` : "20rem" }}
     >
-      <header className="flex items-center justify-between border-b border-gray-700 p-4">
+      <header className="flex h-[72px] items-center justify-between border-b border-gray-700 p-4">
         <h2 className="text-lg font-bold text-white truncate">Chi tiết</h2>
         <button
           onClick={onClose}

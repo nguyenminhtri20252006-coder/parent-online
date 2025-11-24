@@ -384,8 +384,7 @@ export function ChatFrame({
 
   return (
     <div className="flex h-full flex-1 flex-col bg-gray-800">
-      {/* Header Khung Chat */}
-      <header className="flex items-center justify-between border-b border-gray-700 p-4">
+      <header className="flex h-[72px] items-center justify-between border-b border-gray-700 p-4">
         <div className="flex items-center gap-3">
           <Avatar
             src={thread.avatar}
