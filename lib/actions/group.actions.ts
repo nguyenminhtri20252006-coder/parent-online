@@ -19,9 +19,37 @@ import {
   GroupInviteBoxParams,
 } from "@/lib/types/zalo.types";
 
-/**
- * [API] Tạo nhóm mới
- */
+export async function getPendingGroupMembersAction(groupId: string) {
+  console.log(
+    `[Action] Yêu cầu getPendingGroupMembersAction cho nhóm: '${groupId}' (Type: ${typeof groupId})`,
+  );
+
+  if (!groupId || typeof groupId !== "string" || groupId.trim() === "") {
+    console.error("[Action Error] groupId không hợp lệ:", groupId);
+    throw new Error("ID nhóm không hợp lệ (trống hoặc sai định dạng).");
+  }
+
+  try {
+    const result =
+      await ZaloSingletonService.getInstance().getPendingGroupMembers(groupId);
+    console.log(
+      `[Action] getPendingGroupMembersAction thành công. Kết quả:`,
+      result ? "Có dữ liệu" : "Rỗng",
+    );
+    return result;
+  } catch (error: unknown) {
+    // Log toàn bộ lỗi object để debug
+    console.error(
+      "[Action Error] getPendingGroupMembersAction:",
+      JSON.stringify(error, null, 2),
+    );
+
+    // Re-throw với message rõ ràng
+    throw new Error(
+      error instanceof Error ? error.message : "Lỗi lấy danh sách chờ",
+    );
+  }
+}
 export async function createGroupAction(options: CreateGroupOptions) {
   console.log(`[Action] Yêu cầu createGroupAction: ${options.name}`);
   try {
@@ -208,34 +236,12 @@ export async function getGroupInviteBoxListAction(
 }
 
 /**
- * [API] Lấy danh sách thành viên chờ duyệt
- */
-export async function getPendingGroupMembersAction(groupId: string) {
-  console.log(
-    `[Action] Yêu cầu getPendingGroupMembersAction cho nhóm: ${groupId}`,
-  );
-  try {
-    return await ZaloSingletonService.getInstance().getPendingGroupMembers(
-      groupId,
-    );
-  } catch (error: unknown) {
-    console.error("[Action Error] getPendingGroupMembersAction:", error);
-    throw new Error(
-      error instanceof Error ? error.message : "Lỗi lấy danh sách chờ",
-    );
-  }
-}
-
-/**
  * [API] Duyệt thành viên
  */
 export async function reviewPendingMemberRequestAction(
   payload: ReviewPendingMemberRequestPayload,
   groupId: string,
-): Promise<ReviewPendingMemberRequestResponse> {
-  console.log(
-    `[Action] Yêu cầu reviewPendingMemberRequestAction cho nhóm: ${groupId}`,
-  );
+) {
   try {
     return await ZaloSingletonService.getInstance().reviewPendingMemberRequest(
       payload,

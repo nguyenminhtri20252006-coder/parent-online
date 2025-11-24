@@ -9,8 +9,6 @@ import type {
   GroupInfo,
   MessageContent as ZcaMessageContent,
   FindUserResponse,
-  GetFriendRecommendationsResponse,
-  GetSentFriendRequestResponse,
   CreateGroupOptions,
   GroupInfoResponse,
   GetGroupMembersInfoResponse,
@@ -64,15 +62,71 @@ export interface ZaloAPIUser {
   oaInfo: unknown;
   oa_status: unknown;
 }
+export type UserProfile = ZaloAPIUser;
+export interface UserInfoResponse {
+  changed_profiles: Record<string, ZaloAPIUser>;
+}
 
-// --- [FIX] MISSING TYPES DEFINED MANUALLY ---
+export interface FriendRecommendationsRecommItem {
+  dataInfo: {
+    userId: string;
+    displayName: string;
+    avatar: string;
+    recommInfo: { message: string };
+  };
+}
+export interface GetFriendRecommendationsResponse {
+  recommItems: FriendRecommendationsRecommItem[];
+}
 
-// Type cho tham số getGroupInviteBoxList
+// Thông tin lời mời đã gửi
+export interface SentFriendRequestInfo {
+  userId: string;
+  displayName: string;
+  avatar: string;
+  fReqInfo: { message: string; time: string };
+}
+export interface GetSentFriendRequestResponse {
+  [key: string]: SentFriendRequestInfo;
+}
+
+// --- 4. CẤU TRÚC DỮ LIỆU NHÓM (Group) ---
+
 export interface GroupInviteBoxParams {
   mpage?: number;
   page?: number;
   invPerPage?: number;
   mcount?: number;
+}
+
+// Type cho payload Review Pending (Duyệt thành viên) - Bị thiếu trước đây
+export interface ReviewPendingMemberRequestPayload {
+  members: string[];
+  isApprove: boolean;
+}
+
+// Type cho cập nhật cài đặt nhóm
+export interface UpdateGroupSettingsOptions {
+  blockName?: boolean;
+  signAdminMsg?: boolean;
+  setTopicOnly?: boolean;
+  enableMsgHistory?: boolean;
+  joinAppr?: boolean;
+  lockCreatePost?: boolean;
+  lockCreatePoll?: boolean;
+  lockSendMsg?: boolean;
+  lockViewMember?: boolean;
+  groupName?: string;
+  groupDesc?: string;
+}
+
+export interface GetPendingGroupMembersResponse {
+  users: {
+    uid: string;
+    dpn: string;
+    avatar: string;
+  }[];
+  status?: "SUCCESS" | "PERMISSION_DENIED" | "FEATURE_DISABLED" | "ERROR";
 }
 
 // Type cho QR Callback
@@ -91,6 +145,7 @@ export interface ZaloAttachmentContent {
   description?: string;
   href: string;
   thumb?: string;
+  url?: string; // Fallback
 }
 
 export interface ZaloStickerContent {
@@ -193,7 +248,7 @@ export interface RawZaloMessage {
 // [FIX] RESTORE LEGACY ALIAS (Quan trọng cho ChatFrame)
 export type ZaloMessage = RawZaloMessage;
 
-// --- 5. CONSTANTS ---
+// --- 7. CONSTANTS & ENUMS ---
 
 export const ZALO_EVENTS = {
   QR_GENERATED: "qr_generated",
@@ -221,8 +276,6 @@ export type {
   ZcaMessageContent,
   GroupInfo,
   FindUserResponse,
-  GetFriendRecommendationsResponse,
-  GetSentFriendRequestResponse,
   CreateGroupOptions,
   GroupInfoResponse,
   GetGroupMembersInfoResponse,

@@ -27,6 +27,7 @@ import {
   AccountInfo,
   ThreadInfo,
   ZaloAPIUser,
+  UserInfoResponse,
 } from "@/lib/types/zalo.types";
 import { promises as fsPromise } from "fs";
 import path from "path";
@@ -153,10 +154,6 @@ export class ZaloSingletonService {
     this.api.listener.on("message", async (rawMsg: unknown) => {
       try {
         const rawMessage = rawMsg as RawZaloMessage;
-
-        // [DEBUG] Log raw message nhận được từ ZCA listener
-        // console.log("[Service] Listener Raw Message:", JSON.stringify(rawMessage.data.content));
-
         const stdMsg = this.parser.parse(rawMessage);
         if (!stdMsg) return;
 
@@ -209,20 +206,12 @@ export class ZaloSingletonService {
 
   // [FIX] Map dữ liệu User -> AccountInfo
   public async getAccountInfo(): Promise<AccountInfo | null> {
-    if (!this.api) {
-      return null;
-    }
-
+    if (!this.api) return null;
     try {
       const response = await this.api.fetchAccountInfo();
+      if (!response) return null;
 
-      if (!response) {
-        return null;
-      }
-
-      // Xử lý cấu trúc lồng nhau { profile: ... } hoặc trực tiếp
       type APIResponse = { profile?: ZaloAPIUser } & Partial<ZaloAPIUser>;
-
       const data = response as unknown as APIResponse;
       let userData: ZaloAPIUser | undefined;
 
@@ -252,16 +241,60 @@ export class ZaloSingletonService {
     }
   }
 
-  // [FIX] Map dữ liệu User[] -> ThreadInfo[]
   public async getThreads(): Promise<ThreadInfo[]> {
     if (!this.api) return [];
-    const friends = await this.api.getAllFriends();
-    return friends.map((u) => ({
-      id: u.userId,
-      name: u.displayName || u.zaloName || "Unknown",
-      avatar: u.avatar,
-      type: 0,
-    }));
+    try {
+      console.log("[Service] Đang tải danh sách bạn bè và nhóm...");
+      const [friends, rawGroupsData] = await Promise.all([
+        this.api.getAllFriends(),
+        this.api.getAllGroups(),
+      ]);
+
+      // 1. Xử lý danh sách Bạn bè
+      const friendThreads: ThreadInfo[] = friends.map((u) => ({
+        id: u.userId,
+        name: u.displayName || u.zaloName || "Unknown User",
+        avatar: u.avatar,
+        type: 0,
+      }));
+
+      // 2. Xử lý danh sách Nhóm
+      let groupThreads: ThreadInfo[] = [];
+
+      const groupIds = Object.keys(rawGroupsData.gridVerMap || {});
+
+      if (groupIds.length > 0) {
+        console.log(
+          `[Service] Tìm thấy ${groupIds.length} nhóm. Đang lấy thông tin chi tiết...`,
+        );
+        // Lấy chi tiết (Tên, Avatar) cho các nhóm
+        const groupsInfo = await this.api.getGroupInfo(groupIds);
+
+        const infoMap = groupsInfo.gridInfoMap || {};
+
+        groupThreads = groupIds
+          .map((gid) => {
+            const info = infoMap[gid];
+            if (!info) return null;
+            return {
+              id: gid,
+              name: info.name || `Group ${gid}`,
+              avatar: info.avt || info.fullAvt || "",
+              type: 1,
+            };
+          })
+          .filter((t): t is ThreadInfo => t !== null);
+      }
+
+      const allThreads = [...groupThreads, ...friendThreads];
+      console.log(
+        `[Service] Tổng cộng: ${allThreads.length} hội thoại (${groupThreads.length} nhóm, ${friendThreads.length} bạn).`,
+      );
+      return allThreads;
+    } catch (error) {
+      console.error("[Service] Lỗi getThreads:", error);
+      return [];
+    }
   }
 
   // Các hàm proxy khác giữ nguyên
@@ -298,9 +331,71 @@ export class ZaloSingletonService {
     return this.checkApi().getGroupInviteBoxList(p);
   }
 
-  public async getPendingGroupMembers(id: string) {
-    return this.checkApi().getPendingGroupMembers(id);
+  /**
+   * [SAFE UPGRADE] Lấy danh sách thành viên chờ duyệt
+   * - Kiểm tra quyền Admin/Owner trước khi gọi.
+   * - Kiểm tra chế độ Join Approval của nhóm.
+   * - Fallback params Object/String.
+   */
+  public async getPendingGroupMembers(groupId: string) {
+    const api = this.checkApi();
+
+    try {
+      // 1. Lấy thông tin nhóm để kiểm tra quyền
+      const groupInfoResponse = await api.getGroupInfo([groupId]);
+      const groupInfo = groupInfoResponse.gridInfoMap?.[groupId];
+
+      if (!groupInfo) {
+        console.warn(`[Service] Không tìm thấy thông tin nhóm ${groupId}`);
+        return { users: [] };
+      }
+
+      // 2. Kiểm tra Bot có phải Admin/Owner
+      const myId = api.getOwnId();
+      const adminIds = groupInfo.adminIds || [];
+      const creatorId = groupInfo.creatorId;
+
+      const isAdmin = adminIds.includes(myId) || creatorId === myId;
+
+      if (!isAdmin) {
+        console.warn(
+          `[Service] Bot không có quyền Admin/Owner tại nhóm ${groupId}. Bỏ qua lấy Pending List.`,
+        );
+        // Trả về danh sách rỗng thay vì để API throw lỗi 114
+        return { users: [] };
+      }
+
+      // 3. Kiểm tra Setting Join Approval
+      // Lưu ý: Tùy version ZCA mà setting có thể nằm ở groupInfo.setting hoặc chỗ khác
+      if (groupInfo.setting && groupInfo.setting.joinAppr !== 1) {
+        console.log(
+          `[Service] Nhóm ${groupId} không bật chế độ phê duyệt thành viên.`,
+        );
+        return { users: [] };
+      }
+
+      // 4. Gọi API lấy danh sách (Thử cả 2 kiểu tham số)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const apiAny = api as any;
+      console.log(
+        `[Service] Đang lấy danh sách chờ duyệt cho nhóm ${groupId}...`,
+      );
+
+      try {
+        return await apiAny.getPendingGroupMembers({ groupId });
+      } catch {
+        return await apiAny.getPendingGroupMembers(groupId);
+      }
+    } catch (error) {
+      console.error(
+        `[Service] Lỗi an toàn khi lấy Pending Members nhóm ${groupId}:`,
+        error,
+      );
+      // Trả về rỗng an toàn
+      return { users: [] };
+    }
   }
+
   public async reviewPendingMemberRequest(
     p: ReviewPendingMemberRequestPayload,
     id: string,
@@ -352,6 +447,9 @@ export class ZaloSingletonService {
   }
   public async unblockUser(uid: string) {
     return this.checkApi().unblockUser(uid);
+  }
+  public async getUserInfo(userId: string): Promise<UserInfoResponse> {
+    return this.checkApi().getUserInfo(userId);
   }
 
   // Proxy Media (Optional, UI gọi qua Action -> Service)

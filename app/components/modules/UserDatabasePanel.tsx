@@ -2,10 +2,7 @@
 
 /**
  * app/components/modules/UserDatabasePanel.tsx
- *
- * (TỆP MỚI - Lô 4)
- * Component con cho ManagementPanel.
- * Cung cấp UI để quét thủ công và hiển thị User Cache.
+ * [UPDATE] Giao diện bảng/lưới trực quan hơn.
  */
 import { useMemo, useState } from "react";
 import { UserCacheEntry, ThreadInfo } from "@/lib/types/zalo.types";
@@ -16,15 +13,8 @@ import {
   IconPhone,
   IconCheck,
   IconClose,
+  IconSearch,
 } from "@/app/components/ui/Icons";
-
-// Hàm trợ giúp tra cứu tên nhóm từ cache
-const getGroupNames = (groupIds: Set<string>, threads: ThreadInfo[]) => {
-  const threadMap = new Map(threads.map((t) => [t.id, t.name]));
-  return Array.from(groupIds)
-    .map((id) => threadMap.get(id) || "Nhóm không xác định")
-    .join(", ");
-};
 
 export function UserDatabasePanel({
   userCache,
@@ -40,137 +30,189 @@ export function UserDatabasePanel({
   scanStatus: string;
 }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [filter, setFilter] = useState<"all" | "friend" | "stranger">("all");
 
-  // Lọc cache dựa trên thanh tìm kiếm
   const cachedUsers = useMemo(() => {
-    const users = Object.values(userCache);
-    if (!searchTerm) return users;
-    const lowerSearch = searchTerm.toLowerCase();
-    return users.filter(
-      (u) =>
-        u.name.toLowerCase().includes(lowerSearch) ||
-        u.id.includes(lowerSearch) ||
-        u.phoneNumber?.includes(searchTerm),
-    );
-  }, [userCache, searchTerm]);
+    let users = Object.values(userCache);
 
-  // Lấy danh sách nhóm (để đếm và tra cứu tên)
-  const groupThreads = useMemo(
-    () => threads.filter((t) => t.type === 1),
-    [threads],
-  );
+    // 1. Filter
+    if (filter === "friend") users = users.filter((u) => u.isFriend);
+    if (filter === "stranger") users = users.filter((u) => !u.isFriend);
+
+    // 2. Search
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      users = users.filter(
+        (u) =>
+          u.name.toLowerCase().includes(lower) ||
+          u.id.includes(lower) ||
+          (u.phoneNumber && u.phoneNumber.includes(lower)),
+      );
+    }
+    return users;
+  }, [userCache, searchTerm, filter]);
 
   return (
-    // SỬA ĐỔI: Thêm md:col-span-2 để component này chiếm toàn bộ chiều rộng
-    <div className="rounded-lg bg-gray-800 p-4 shadow-lg md:col-span-2">
-      <h2 className="mb-3 text-xl font-semibold text-white">
-        Cơ sở dữ liệu Người dùng
-      </h2>
-
-      {/* 1. Phần Quét Thủ công */}
-      <div className="mb-4 rounded-lg bg-gray-900/50 p-3">
-        <h3 className="flex items-center gap-2 text-base font-semibold text-gray-200">
-          <IconRefresh className="h-5 w-5" />
-          Quét Dữ liệu
-        </h3>
-        <p className="my-2 text-sm text-gray-400">
-          Quét tuần tự tất cả các nhóm để xây dựng cache (có độ trễ 2 giây/nhóm
-          để đảm bảo an toàn).
-        </p>
-        <button
-          onClick={onStartManualScan}
-          disabled={isScanningAll}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-wait disabled:opacity-50"
-        >
-          <IconRefresh
-            className={`h-5 w-5 ${isScanningAll ? "animate-spin" : ""}`}
-          />
-          {isScanningAll
-            ? "Đang quét..."
-            : `Quét thủ công toàn bộ (${groupThreads.length} nhóm)`}
-        </button>
-        {scanStatus && (
-          <p className="mt-2 text-center text-sm text-yellow-400">
-            {scanStatus}
-          </p>
-        )}
-      </div>
-
-      {/* 2. Phần Bảng Thống kê Cache */}
-      <h3 className="text-base font-semibold text-gray-200">
-        Danh sách Đã Cache ({cachedUsers.length} /{" "}
-        {Object.keys(userCache).length})
-      </h3>
-      <input
-        type="text"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        placeholder="Tìm theo tên, UID, SĐT..."
-        className="my-3 w-full rounded-lg border border-gray-600 bg-gray-700 py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-      <div className="h-96 max-h-96 space-y-2 overflow-y-auto pr-2">
-        {cachedUsers.length === 0 && (
-          <p className="pt-4 text-center text-gray-500">
-            {Object.keys(userCache).length > 0
-              ? "Không tìm thấy kết quả."
-              : "Chưa có dữ liệu cache. Hãy quét nhóm."}
-          </p>
-        )}
-        {cachedUsers.map((user) => (
-          <div
-            key={user.id}
-            className="flex items-center gap-3 rounded-lg bg-gray-700/50 p-2"
-          >
-            <Avatar src={user.avatar} alt={user.name} />
-            <div className="w-1/3 flex-1 overflow-hidden">
-              <h4
-                className="truncate font-semibold text-white"
-                title={user.name}
-              >
-                {user.name}
-              </h4>
-              <p
-                className="truncate font-mono text-xs text-gray-400"
-                title={user.id}
-              >
-                ID: {user.id}
+    <div className="flex flex-col h-full bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
+      {/* Header & Scan Controls */}
+      <div className="p-4 border-b border-gray-700 bg-gray-900">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-900/30 rounded-lg">
+              <IconUsers className="h-6 w-6 text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white leading-tight">
+                Database Người Dùng
+              </h2>
+              <p className="text-xs text-gray-400 font-mono">
+                {Object.keys(userCache).length} records cached
               </p>
             </div>
-            <div
-              className="flex w-28 flex-shrink-0 items-center gap-1 text-sm text-gray-300"
-              title={user.phoneNumber || "Không có SĐT"}
-            >
-              <IconPhone className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{user.phoneNumber || "Không có"}</span>
-            </div>
-            <div className="w-20 flex-shrink-0 text-sm">
-              {user.isFriend ? (
-                <span
-                  className="flex items-center gap-1 text-green-400"
-                  title="Bạn bè"
-                >
-                  <IconCheck className="h-4 w-4" /> Bạn bè
-                </span>
-              ) : (
-                <span
-                  className="flex items-center gap-1 text-gray-400"
-                  title="Người lạ"
-                >
-                  <IconClose className="h-4 w-4" /> Người lạ
-                </span>
-              )}
-            </div>
-            <div
-              className="flex w-28 flex-shrink-0 items-center gap-1 text-sm text-blue-300"
-              title={getGroupNames(user.commonGroups, threads)}
-            >
-              <IconUsers className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">
-                {user.commonGroups.size} nhóm chung
-              </span>
-            </div>
           </div>
-        ))}
+
+          <button
+            onClick={onStartManualScan}
+            disabled={isScanningAll}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm ${
+              isScanningAll
+                ? "bg-yellow-600/20 text-yellow-400 cursor-not-allowed border border-yellow-600/30"
+                : "bg-blue-600 text-white hover:bg-blue-500 hover:shadow-blue-500/20 active:scale-95"
+            }`}
+          >
+            <IconRefresh
+              className={`h-4 w-4 ${isScanningAll ? "animate-spin" : ""}`}
+            />
+            {isScanningAll ? "Đang quét..." : "Quét Groups"}
+          </button>
+        </div>
+
+        {scanStatus && (
+          <div className="mb-4 px-3 py-2 rounded bg-blue-900/20 border border-blue-800/50 text-xs text-blue-200 font-mono text-center animate-pulse">
+            {scanStatus}
+          </div>
+        )}
+
+        {/* Filters & Search */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1 group">
+            <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-blue-400 transition-colors" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm kiếm ID, Tên, SĐT..."
+              className="w-full rounded-lg border border-gray-600 bg-gray-800 py-2 pl-9 pr-3 text-white text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+            />
+          </div>
+          <div className="flex bg-gray-700/50 rounded-lg p-1 border border-gray-600">
+            {(["all", "friend", "stranger"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  filter === f
+                    ? "bg-gray-600 text-white shadow-sm"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-600/50"
+                }`}
+              >
+                {f === "all"
+                  ? "Tất cả"
+                  : f === "friend"
+                  ? "Bạn bè"
+                  : "Người lạ"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Data Grid - Responsive Fix */}
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-800/50">
+        <div
+          className="grid gap-3"
+          style={{
+            // [CRITICAL FIX] Sử dụng minmax để đảm bảo thẻ không bị co nhỏ quá mức
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          }}
+        >
+          {cachedUsers.map((user) => (
+            <div
+              key={user.id}
+              className="group relative flex items-start gap-3 p-3 rounded-xl border border-gray-700 bg-gray-800 hover:bg-gray-750 hover:border-gray-600 transition-all duration-200 hover:shadow-md"
+            >
+              <div className="relative shrink-0">
+                <Avatar src={user.avatar} alt={user.name} />
+                {user.isFriend && (
+                  <div
+                    className="absolute -bottom-1 -right-1 bg-green-500 rounded-full p-0.5 border-2 border-gray-800"
+                    title="Là bạn bè"
+                  >
+                    <IconCheck className="h-2.5 w-2.5 text-white" />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex justify-between items-start gap-2">
+                  <h4
+                    className="font-semibold text-white truncate text-sm group-hover:text-blue-400 transition-colors"
+                    title={user.name}
+                  >
+                    {user.name}
+                  </h4>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded border uppercase font-bold tracking-wider ${
+                      user.isFriend
+                        ? "border-green-800 bg-green-900/20 text-green-400"
+                        : "border-gray-600 bg-gray-700/50 text-gray-500"
+                    }`}
+                  >
+                    {user.isFriend ? "Friend" : "Guest"}
+                  </span>
+                </div>
+
+                <div className="mt-2 space-y-1.5">
+                  <div
+                    className="flex items-center gap-2 text-xs text-gray-500 bg-gray-900/50 p-1 rounded hover:bg-gray-900 transition-colors cursor-copy"
+                    title="Click để copy ID"
+                  >
+                    <span className="font-mono select-all truncate">
+                      {user.id}
+                    </span>
+                  </div>
+
+                  {user.phoneNumber && (
+                    <div className="flex items-center gap-2 text-xs text-yellow-300/90">
+                      <IconPhone className="h-3 w-3" />
+                      <span className="font-mono select-all tracking-wide">
+                        {user.phoneNumber}
+                      </span>
+                    </div>
+                  )}
+
+                  {user.commonGroups.size > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-blue-300/90">
+                      <IconUsers className="h-3 w-3" />
+                      <span className="truncate">
+                        {user.commonGroups.size} nhóm chung
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {cachedUsers.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3 min-h-[200px]">
+            <div className="p-4 bg-gray-800 rounded-full border border-gray-700">
+              <IconUsers className="h-8 w-8 opacity-20" />
+            </div>
+            <p className="text-sm">Không tìm thấy dữ liệu phù hợp.</p>
+          </div>
+        )}
       </div>
     </div>
   );

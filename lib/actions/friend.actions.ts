@@ -6,8 +6,14 @@
  * Lớp Logic (Server Actions - Lớp 2) - Nghiệp vụ Quản lý Bạn bè.
  */
 import { ZaloSingletonService } from "@/lib/runtime-service";
-// THÊM MỚI: Import User
-import { FindUserResponse, User } from "zca-js";
+// SỬA ĐỔI: Import đúng các type đã định nghĩa trong file SSOT mới
+import {
+  FindUserResponse,
+  User,
+  GetFriendRecommendationsResponse,
+  GetSentFriendRequestResponse,
+  UserInfoResponse,
+} from "@/lib/types/zalo.types";
 
 /**
  * [API] Tìm kiếm người dùng bằng SĐT
@@ -120,11 +126,11 @@ export async function unblockUserAction(userId: string): Promise<void> {
 /**
  * [API] Lấy danh sách gợi ý kết bạn
  */
-export async function getFriendRecommendationsAction() {
+export async function getFriendRecommendationsAction(): Promise<GetFriendRecommendationsResponse> {
   console.log(`[Action] Yêu cầu getFriendRecommendationsAction`);
   try {
-    // Kiểu trả về quá phức tạp, để service tự xử lý
-    return await ZaloSingletonService.getInstance().getFriendRecommendations();
+    // Sử dụng 'as' để ép kiểu nếu thư viện trả về 'any'
+    return (await ZaloSingletonService.getInstance().getFriendRecommendations()) as unknown as GetFriendRecommendationsResponse;
   } catch (error: unknown) {
     console.error("[Action Error] getFriendRecommendationsAction:", error);
     throw new Error(
@@ -136,10 +142,10 @@ export async function getFriendRecommendationsAction() {
 /**
  * [API] Lấy danh sách lời mời đã gửi
  */
-export async function getSentFriendRequestAction() {
+export async function getSentFriendRequestAction(): Promise<GetSentFriendRequestResponse> {
   console.log(`[Action] Yêu cầu getSentFriendRequestAction`);
   try {
-    return await ZaloSingletonService.getInstance().getSentFriendRequest();
+    return (await ZaloSingletonService.getInstance().getSentFriendRequest()) as unknown as GetSentFriendRequestResponse;
   } catch (error: unknown) {
     console.error("[Action Error] getSentFriendRequestAction:", error);
     throw new Error(
@@ -159,6 +165,20 @@ export async function getAllFriendsAction(): Promise<User[]> {
     console.error("[Action Error] getAllFriendsAction:", error);
     throw new Error(
       error instanceof Error ? error.message : "Lỗi lấy danh sách bạn bè",
+    );
+  }
+}
+
+export async function getUserInfoAction(
+  userId: string,
+): Promise<UserInfoResponse> {
+  console.log(`[Action] Yêu cầu getUserInfoAction cho: ${userId}`);
+  try {
+    return await ZaloSingletonService.getInstance().getUserInfo(userId);
+  } catch (error: unknown) {
+    console.error("[Action Error] getUserInfoAction:", error);
+    throw new Error(
+      error instanceof Error ? error.message : "Lỗi lấy thông tin user",
     );
   }
 }

@@ -26,7 +26,7 @@ import {
   IconUserPlus,
 } from "@/app/components/ui/Icons";
 import { Avatar } from "@/app/components/ui/Avatar";
-import { useEffect, useState, useCallback, useMemo } from "react"; // SỬA ĐỔI
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   disableGroupLinkAction,
   enableGroupLinkAction,
@@ -57,11 +57,7 @@ const IconLockClosed = ({ className }: { className: string }) => (
 const PermissionDeniedMessage = ({ message }: { message: string }) => (
   <div className="mt-2 flex items-center gap-2 rounded-md border border-yellow-700 bg-yellow-900/50 p-3 text-sm text-yellow-300">
     <IconLockClosed className="h-5 w-5 flex-shrink-0" />
-    <span className="flex-1">
-      {message.includes("Permission Denied")
-        ? "Bạn không có quyền (Trưởng/Phó nhóm) để thực hiện hành động này."
-        : message}
-    </span>
+    <span className="flex-1">{message}</span>
   </div>
 );
 
@@ -167,27 +163,27 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
-  // THÊM MỚI: State riêng cho lỗi phân quyền
-  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
 
   const fetchPendingMembers = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    setPermissionError(null); // Reset lỗi quyền khi tải lại
+    setPermissionStatus(null); // Reset
     try {
       const data = await getPendingGroupMembersAction(thread.id);
-      setPending(data);
-    } catch (err: unknown) {
-      // SỬA ĐỔI: Phân loại lỗi
-      const errorMessage =
-        err instanceof Error ? err.message : "Lỗi không xác định";
-      if (errorMessage.includes("Permission Denied")) {
-        // Lỗi phân quyền -> set state riêng
-        setPermissionError(errorMessage);
+
+      // [Logic Mới] Kiểm tra status trả về
+      if (data.status === "PERMISSION_DENIED") {
+        setPermissionStatus("PERMISSION_DENIED");
+        setPending(null);
+      } else if (data.status === "FEATURE_DISABLED") {
+        setPermissionStatus("FEATURE_DISABLED");
+        setPending(null);
       } else {
-        // Lỗi khác -> set state lỗi chung
-        setError(errorMessage);
+        setPending(data);
       }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Lỗi không xác định");
     } finally {
       setIsLoading(false);
     }
@@ -199,7 +195,6 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
 
   const handleReview = async (memberId: string, isApprove: boolean) => {
     setIsProcessing((prev) => ({ ...prev, [memberId]: true }));
-    setError(null);
     try {
       await reviewPendingMemberRequestAction(
         { members: [memberId], isApprove },
@@ -208,14 +203,7 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
       // Tải lại danh sách sau khi duyệt
       fetchPendingMembers();
     } catch (err: unknown) {
-      // SỬA ĐỔI: Phân loại lỗi (cho an toàn, dù hàm này cũng đã có guard)
-      const errorMessage =
-        err instanceof Error ? err.message : "Lỗi duyệt thành viên";
-      if (errorMessage.includes("Permission Denied")) {
-        setPermissionError(errorMessage);
-      } else {
-        setError(errorMessage);
-      }
+      setError(err instanceof Error ? err.message : "Lỗi duyệt thành viên");
     } finally {
       setIsProcessing((prev) => ({ ...prev, [memberId]: false }));
     }
@@ -228,9 +216,13 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
         Thành viên chờ duyệt
       </h3>
 
-      {/* THÊM MỚI: Render có điều kiện cho Lỗi Quyền */}
-      {permissionError ? (
-        <PermissionDeniedMessage message={permissionError} />
+      {/* Hiển thị thông báo dựa trên Status */}
+      {permissionStatus === "PERMISSION_DENIED" ? (
+        <PermissionDeniedMessage message="Bạn không phải là Admin/Owner." />
+      ) : permissionStatus === "FEATURE_DISABLED" ? (
+        <div className="mt-2 p-2 text-sm text-gray-400 bg-gray-800/50 rounded border border-gray-700">
+          Chức năng duyệt thành viên chưa được bật.
+        </div>
       ) : (
         <>
           {/* Gói toàn bộ UI cũ vào trong <> ... </> */}
@@ -295,7 +287,6 @@ function ManagePendingPanel({ thread }: { thread: ThreadInfo }) {
   );
 }
 
-// --- Component 3 (MỚI - GĐ 3.10): Quản lý Thành viên ---
 function ManageMembersPanel({
   thread,
   friendsList,
@@ -307,8 +298,6 @@ function ManageMembersPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-
-  // State cho từng hành động
   const [isProcessingAdd, setIsProcessingAdd] = useState<
     Record<string, boolean>
   >({});
@@ -316,24 +305,19 @@ function ManageMembersPanel({
     Record<string, boolean>
   >({});
 
-  // Tải danh sách thành viên hiện tại
   const fetchGroupMembers = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // 1. Lấy thông tin nhóm để có danh sách ID thành viên
       const groupInfo = await getGroupInfoAction(thread.id);
-      const groupData = groupInfo.gridInfoMap[thread.id];
-      if (!groupData || !groupData.memVerList) {
-        throw new Error("Không thể lấy danh sách ID thành viên nhóm.");
-      }
-      const memberIds = groupData.memVerList;
-
-      // 2. Lấy thông tin profile của các thành viên
-      const memberProfiles = await getGroupMembersInfoAction(memberIds);
+      const groupData = groupInfo.gridInfoMap?.[thread.id];
+      if (!groupData?.memVerList) return;
+      const memberProfiles = await getGroupMembersInfoAction(
+        groupData.memVerList,
+      );
       setMembers(Object.values(memberProfiles.profiles));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Lỗi tải thành viên nhóm");
+      setError(err instanceof Error ? err.message : "Lỗi tải thành viên");
     } finally {
       setIsLoading(false);
     }
@@ -347,10 +331,10 @@ function ManageMembersPanel({
   const friendsToAdd = useMemo(() => {
     const memberIds = new Set(members.map((m) => m.id));
     return friendsList.filter(
-      (friend) =>
-        friend.type === 0 && // Chỉ là Bạn bè
-        !memberIds.has(friend.id) && // Chưa có trong nhóm
-        friend.name.toLowerCase().includes(searchTerm.toLowerCase()), // Khớp tìm kiếm
+      (f) =>
+        f.type === 0 &&
+        !memberIds.has(f.id) &&
+        f.name.toLowerCase().includes(searchTerm.toLowerCase()),
     );
   }, [members, friendsList, searchTerm]);
 
@@ -408,7 +392,7 @@ function ManageMembersPanel({
         </h4>
         <input
           type="text"
-          placeholder="Tìm kiếm bạn bè..."
+          placeholder="Tìm kiếm..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full rounded-md border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:outline-none"
@@ -479,10 +463,10 @@ function ManageMembersPanel({
 // --- Component Chính ---
 export function AdvancedGroupManager({
   selectedThread,
-  threads, // SỬA ĐỔI: Nhận 'threads'
+  threads,
 }: {
   selectedThread: ThreadInfo | null;
-  threads: ThreadInfo[]; // SỬA ĐỔI: Nhận 'threads'
+  threads: ThreadInfo[];
 }) {
   return (
     <div className="rounded-lg bg-gray-800 p-4 shadow-lg">
@@ -490,18 +474,13 @@ export function AdvancedGroupManager({
         <IconCog className="h-6 w-6" />
         Quản lý Nhóm (Nâng cao)
       </h2>
-
-      {/* 1. Kiểm tra xem đã chọn nhóm chưa */}
       {!selectedThread || selectedThread.type !== 1 ? (
         <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-gray-700">
           <p className="text-center text-gray-500">
             Vui lòng chọn một <span className="font-bold">Nhóm</span>
-            <br />
-            từ danh sách &quot;Chat&quot; (Module 2) để quản lý.
           </p>
         </div>
       ) : (
-        // 2. Đã chọn nhóm -> Hiển thị các công cụ
         <div className="space-y-4">
           <div className="flex items-center gap-3 rounded-md bg-gray-700 p-3">
             <Avatar
@@ -518,8 +497,6 @@ export function AdvancedGroupManager({
           </div>
           <ManageLinkPanel thread={selectedThread} />
           <ManagePendingPanel thread={selectedThread} />
-
-          {/* SỬA ĐỔI (GĐ 3.10): Thay thế Placeholder */}
           <ManageMembersPanel thread={selectedThread} friendsList={threads} />
         </div>
       )}

@@ -11,8 +11,8 @@ import {
   IconRefresh,
   IconLogout,
   IconMenuToggle,
-  IconChatBubble, // THÊM MỚI
-  IconCog, // THÊM MỚI
+  IconChatBubble,
+  IconCog,
 } from "@/app/components/ui/Icons";
 
 // THÊM MỚI: Component TabButton
@@ -23,7 +23,7 @@ const TabButton = ({
   onClick,
   isExpanded,
 }: {
-  icon: (props: { className: string }) => ReactNode; // SỬA ĐỔI: JSX.Element -> ReactNode
+  icon: (props: { className: string }) => ReactNode;
   label: string;
   isActive: boolean;
   onClick: () => void;
@@ -31,15 +31,26 @@ const TabButton = ({
 }) => (
   <button
     onClick={onClick}
-    className={`flex w-full items-center gap-3 rounded-lg p-3 text-left text-sm transition-colors ${
+    className={`flex w-full items-center gap-3 rounded-lg p-3 text-left text-sm transition-all duration-200 ${
       isActive
-        ? "bg-blue-600 text-white"
-        : "text-gray-300 hover:bg-gray-700 hover:text-white"
+        ? "bg-blue-600 text-white shadow-md shadow-blue-900/20"
+        : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
     }`}
     title={label}
   >
-    <Icon className="h-6 w-6 flex-shrink-0" />
-    {isExpanded && <span className="flex-1 font-medium">{label}</span>}
+    <Icon
+      className={`h-6 w-6 flex-shrink-0 ${
+        isActive ? "text-white" : "text-gray-400"
+      }`}
+    />
+    {/* CSS transition cho opacity để mượt mà hơn khi resize */}
+    <span
+      className={`flex-1 font-medium whitespace-nowrap overflow-hidden transition-opacity duration-200 ${
+        isExpanded ? "opacity-100" : "opacity-0 w-0"
+      }`}
+    >
+      {label}
+    </span>
   </button>
 );
 
@@ -52,7 +63,7 @@ const ActionButton = ({
   isLoading = false,
   isDestructive = false,
 }: {
-  icon: (props: { className: string }) => ReactNode; // SỬA ĐỔI: JSX.Element -> ReactNode
+  icon: (props: { className: string }) => ReactNode;
   label: string;
   onClick: () => void;
   isExpanded: boolean;
@@ -64,15 +75,21 @@ const ActionButton = ({
     disabled={isLoading}
     className={`flex w-full items-center gap-3 rounded-lg p-3 text-left text-sm transition-colors disabled:cursor-wait disabled:opacity-50 ${
       isDestructive
-        ? "text-red-400 hover:bg-red-800 hover:text-red-300"
-        : "text-gray-400 hover:bg-gray-700 hover:text-white"
+        ? "text-red-400 hover:bg-red-900/30 hover:text-red-300"
+        : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
     }`}
     title={label}
   >
     <Icon
       className={`h-6 w-6 flex-shrink-0 ${isLoading ? "animate-spin" : ""}`}
     />
-    {isExpanded && <span className="flex-1">{label}</span>}
+    <span
+      className={`flex-1 whitespace-nowrap overflow-hidden transition-opacity duration-200 ${
+        isExpanded ? "opacity-100" : "opacity-0 w-0"
+      }`}
+    >
+      {label}
+    </span>
   </button>
 );
 
@@ -85,9 +102,10 @@ export function MainMenu({
   onLogout,
   onFetchAccountInfo,
   isLoadingAccountInfo,
-  // THÊM MỚI: Props cho Tabs (View)
   currentView,
   onChangeView,
+  // [NEW PROP]
+  customWidth,
 }: {
   accountInfo: AccountInfo | null;
   onCopyToken: () => void;
@@ -100,68 +118,77 @@ export function MainMenu({
   // THÊM MỚI
   currentView: ViewState;
   onChangeView: (view: ViewState) => void;
+  customWidth?: number;
 }) {
   return (
     <div
-      className={`flex h-full flex-col bg-gray-900 py-4 transition-all duration-300 ease-in-out ${
-        isExpanded ? "w-64" : "w-16"
-      }`}
+      className="flex h-full flex-col bg-gray-900 border-r border-gray-800 py-4 flex-shrink-0 overflow-hidden relative"
+      style={{ width: customWidth ? `${customWidth}px` : undefined }} // Dùng inline style cho width
     >
       {/* 1. Profile */}
       <div
-        className={`flex items-center gap-3 px-4 ${
+        className={`flex items-center gap-3 px-3 mb-6 ${
           !isExpanded ? "justify-center" : ""
         }`}
       >
-        {accountInfo ? (
-          <Avatar src={accountInfo.avatar} alt={accountInfo.displayName} />
-        ) : (
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700">
-            <IconUser className="h-6 w-6 text-gray-400" />
-          </div>
-        )}
-        {isExpanded && accountInfo && (
-          <div className="flex-1 overflow-hidden">
-            <h3 className="truncate font-semibold text-white">
-              {accountInfo.displayName}
-            </h3>
-            <p className="truncate text-xs text-gray-400">
-              ID: {accountInfo.userId}
-            </p>
-          </div>
-        )}
+        <div className="shrink-0">
+          {accountInfo ? (
+            <Avatar src={accountInfo.avatar} alt={accountInfo.displayName} />
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-800 border border-gray-700">
+              <IconUser className="h-6 w-6 text-gray-500" />
+            </div>
+          )}
+        </div>
+
+        <div
+          className={`flex-1 overflow-hidden transition-opacity duration-200 ${
+            isExpanded ? "opacity-100" : "opacity-0 w-0 hidden"
+          }`}
+        >
+          {accountInfo && (
+            <>
+              <h3 className="truncate font-bold text-white text-sm">
+                {accountInfo.displayName}
+              </h3>
+              <p className="truncate text-xs text-gray-500 font-mono">
+                {accountInfo.userId}
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* 2. Các Nút Chức năng (Hiển thị đầy đủ khi mở rộng) */}
-      <div className="mt-8 flex-1 space-y-2 px-3">
+      {/* 2. Main Navigation */}
+      <div className="flex-1 space-y-2 px-3 overflow-y-auto scrollbar-thin">
         <TabButton
           icon={IconChatBubble}
-          label="Chat"
+          label="Trò chuyện"
           isActive={currentView === "chat"}
           onClick={() => onChangeView("chat")}
           isExpanded={isExpanded}
         />
         <TabButton
           icon={IconCog}
-          label="Quản lý"
+          label="Quản lý & Hệ thống"
           isActive={currentView === "manage"}
           onClick={() => onChangeView("manage")}
           isExpanded={isExpanded}
         />
       </div>
 
-      {/* 3. CÁC NÚT HÀNH ĐỘNG PHỤ */}
-      <div className="mt-8 space-y-2 border-t border-gray-700 px-3 pt-4">
+      {/* 3. Footer Actions */}
+      <div className="mt-auto px-3 pt-4 border-t border-gray-800 space-y-1">
         <ActionButton
           icon={IconRefresh}
-          label={isLoadingAccountInfo ? "Đang tải lại..." : "Tải lại Thông tin"}
+          label={isLoadingAccountInfo ? "Đang tải..." : "Reload Info"}
           onClick={onFetchAccountInfo}
           isExpanded={isExpanded}
           isLoading={isLoadingAccountInfo}
         />
         <ActionButton
           icon={(props) => (
-            <svg // Icon: Document Copy (Sao chép)
+            <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -176,11 +203,14 @@ export function MainMenu({
               />
             </svg>
           )}
-          label={isCopying ? "Đang lấy..." : "Sao chép Session"}
+          label={isCopying ? "Đang copy..." : "Copy Token"}
           onClick={onCopyToken}
           isExpanded={isExpanded}
           isLoading={isCopying}
         />
+
+        <div className="my-2 border-t border-gray-800" />
+
         <ActionButton
           icon={IconLogout}
           label="Đăng xuất"
@@ -188,16 +218,19 @@ export function MainMenu({
           isExpanded={isExpanded}
           isDestructive={true}
         />
-      </div>
-      <div className="mt-auto px-3 pt-4">
+
+        {/* Toggle Button */}
         <button
           onClick={onToggleMenu}
-          className={`flex w-full items-center gap-3 rounded-lg p-3 text-left text-sm text-gray-400 transition-colors hover:bg-gray-700 hover:text-white ${
-            !isExpanded ? "justify-center" : ""
-          }`}
-          title={isExpanded ? "Thu gọn menu" : "Mở rộng menu"}
+          className="flex w-full items-center justify-center gap-3 rounded-lg p-3 text-gray-500 hover:text-white hover:bg-gray-800 transition-colors mt-2"
+          title={isExpanded ? "Thu gọn" : "Mở rộng"}
         >
-          <IconMenuToggle className="h-6 w-6" isExpanded={isExpanded} />
+          <IconMenuToggle
+            className={`h-6 w-6 transition-transform duration-300 ${
+              isExpanded ? "rotate-180" : ""
+            }`}
+            isExpanded={isExpanded}
+          />
         </button>
       </div>
     </div>
