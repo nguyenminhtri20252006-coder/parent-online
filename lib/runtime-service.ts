@@ -1,6 +1,7 @@
 /**
  * lib/runtime-service.ts
  * Orchestrator điều phối luồng xử lý tin nhắn 6 bước.
+ * [FIX] Thêm logic chunking cho getGroupInfo để tránh lỗi 114.
  */
 
 import {
@@ -32,12 +33,14 @@ import {
 import { promises as fsPromise } from "fs";
 import path from "path";
 
-// Mock Storage
-const MockStorage = {
-  save: async (msg: unknown) => {
-    /* console.log("Saved", msg); */
-  },
-};
+// Helper: Chia mảng thành các phần nhỏ (chunk)
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunked: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunked.push(array.slice(i, i + size));
+  }
+  return chunked;
+}
 
 export class ZaloSingletonService {
   private static instance: ZaloSingletonService;
@@ -265,17 +268,47 @@ export class ZaloSingletonService {
 
       if (groupIds.length > 0) {
         console.log(
-          `[Service] Tìm thấy ${groupIds.length} nhóm. Đang lấy thông tin chi tiết...`,
+          `[Service] Tìm thấy ${groupIds.length} nhóm. Bắt đầu tải thông tin theo batch...`,
         );
-        // Lấy chi tiết (Tên, Avatar) cho các nhóm
-        const groupsInfo = await this.api.getGroupInfo(groupIds);
 
-        const infoMap = groupsInfo.gridInfoMap || {};
+        // CHIA NHỎ DANH SÁCH: Mỗi lần tải 20 nhóm (Con số an toàn)
+        const BATCH_SIZE = 20;
+        const idChunks = chunkArray(groupIds, BATCH_SIZE);
 
+        // Dùng object tạm để gom kết quả
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let combinedInfoMap: Record<string, any> = {};
+
+        // Chạy vòng lặp tuần tự (hoặc Promise.all nếu API chịu được concurrent)
+        // Ở đây dùng tuần tự để an toàn nhất, tránh rate limit
+        for (let i = 0; i < idChunks.length; i++) {
+          const chunk = idChunks[i];
+          console.log(
+            `[Service] Đang tải batch ${i + 1}/${idChunks.length} (${
+              chunk.length
+            } nhóm)...`,
+          );
+          try {
+            const batchResult = await this.api.getGroupInfo(chunk);
+            if (batchResult && batchResult.gridInfoMap) {
+              combinedInfoMap = {
+                ...combinedInfoMap,
+                ...batchResult.gridInfoMap,
+              };
+            }
+            // Thêm delay nhỏ giữa các batch nếu cần thiết
+            // await new Promise(r => setTimeout(r, 200));
+          } catch (err) {
+            console.error(`[Service] Lỗi tải batch ${i + 1}:`, err);
+            // Tiếp tục chạy batch sau, không dừng lại
+          }
+        }
+
+        // Map kết quả tổng hợp ra ThreadInfo
         groupThreads = groupIds
           .map((gid) => {
-            const info = infoMap[gid];
-            if (!info) return null;
+            const info = combinedInfoMap[gid];
+            if (!info) return null; // Nhóm nào lỗi thì bỏ qua
             return {
               id: gid,
               name: info.name || `Group ${gid}`,
