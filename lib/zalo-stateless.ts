@@ -3,9 +3,10 @@ import {
   ZaloSessionToken,
   VocabularyItem,
   formatVocabularyText,
+  ThreadInfo,
 } from "@/lib/types";
 
-// Helper: Tải buffer ảnh
+// Helper: Tải buffer từ URL
 async function fetchBuffer(url: string): Promise<Buffer> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to fetch media: ${url}`);
@@ -19,29 +20,22 @@ export class ZaloStateless {
   async login(token: ZaloSessionToken): Promise<void> {
     console.log("[ZaloStateless] Starting login process...");
 
-    // [REVERTED LOGIC] Dựa trên code tham khảo từ ZaloLite
-    // Chúng ta KHÔNG normalize cookie thành string nữa.
-    // Truyền nguyên object cookie (dù là tough-cookie object hay string) vào.
-
-    // Kiểm tra sơ bộ
     if (!token.cookie || !token.imei) {
       throw new Error("Token thiếu cookie hoặc imei");
     }
 
-    // Nếu token.cookie là string JSON, parse nó ra object
     let cookieData = token.cookie;
     if (typeof cookieData === "string" && cookieData.trim().startsWith("{")) {
       try {
         cookieData = JSON.parse(cookieData);
         console.log("[ZaloStateless] Parsed cookie string to object.");
       } catch {
-        // Giữ nguyên nếu không parse được
         console.log("[ZaloStateless] Cookie is raw string.");
       }
     }
 
     const credentials = {
-      cookie: cookieData, // Truyền nguyên object/string
+      cookie: cookieData,
       imei: token.imei,
       userAgent:
         token.userAgent ||
@@ -50,15 +44,13 @@ export class ZaloStateless {
 
     console.log(`[ZaloStateless] Credentials prepared. IMEI: ${token.imei}`);
 
-    // 2. Khởi tạo
-    // Ép kiểu 'any' cho options
     const zalo = new Zalo({
       authType: "cookie",
       selfListen: false,
-      log: false, // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      log: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
-    // 3. Login
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const api = await zalo.login(credentials as any);
@@ -72,33 +64,64 @@ export class ZaloStateless {
     }
   }
 
-  async getThreads() {
+  async getThreads(): Promise<ThreadInfo[]> {
     if (!this.api) throw new Error("Unauthorized: Bot chưa đăng nhập");
 
-    console.log("[ZaloStateless] Fetching threads...");
+    console.log("[ZaloStateless] Fetching threads (Friends & Groups)...");
     try {
-      const [groups, friends] = await Promise.all([
-        this.api.getAllGroups(),
-        this.api.getAllFriends(),
-      ]);
+      // 1. Lấy danh sách bạn bè
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const friendsList: any[] = await this.api.getAllFriends();
+      console.log(`[ZaloStateless] Found ${friendsList.length} friends.`);
 
-      const threads = [
-        ...friends.map((f) => ({
-          id: f.userId,
-          name: f.displayName || f.zaloName,
-          avatar: f.avatar,
-          type: "user" as const,
-        })),
-        ...Object.keys(groups.gridVerMap).map((gid) => ({
-          id: gid,
-          name: `Group ${gid}`,
-          avatar: "",
-          type: "group" as const,
-        })),
-      ];
+      const friendThreads: ThreadInfo[] = friendsList.map((f) => ({
+        id: f.userId,
+        name: f.displayName || f.zaloName || "Unknown User",
+        avatar: f.avatar || "",
+        type: "user",
+      }));
 
-      console.log(`[ZaloStateless] Found ${threads.length} threads.`);
-      return threads;
+      // 2. Lấy danh sách nhóm
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const groupsResult: any = await this.api.getAllGroups();
+      const allGroupIds = Object.keys(groupsResult.gridVerMap || {});
+      console.log(`[ZaloStateless] Found ${allGroupIds.length} groups.`);
+
+      let groupThreads: ThreadInfo[] = [];
+
+      // 3. Hydrate thông tin nhóm (Batching 50)
+      const targetGroupIds = allGroupIds.slice(0, 50);
+
+      if (targetGroupIds.length > 0) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const groupInfos: any = await this.api.getGroupInfo(targetGroupIds);
+
+          groupThreads = targetGroupIds.map((gid) => {
+            const info = groupInfos.gridInfoMap?.[gid];
+            return {
+              id: gid,
+              name: info ? info.name : `Group ${gid}`,
+              avatar: info ? info.avt : "",
+              type: "group",
+            };
+          });
+        } catch (err) {
+          console.error("[ZaloStateless] Error fetching group details:", err);
+          groupThreads = targetGroupIds.map((gid) => ({
+            id: gid,
+            name: `Group ${gid}`,
+            avatar: "",
+            type: "group",
+          }));
+        }
+      }
+
+      const combined = [...groupThreads, ...friendThreads];
+      console.log(
+        `[ZaloStateless] Returning ${combined.length} total threads.`,
+      );
+      return combined;
     } catch (e) {
       console.error("[ZaloStateless] Fetch threads failed:", e);
       throw e;
@@ -109,9 +132,11 @@ export class ZaloStateless {
     if (!this.api) throw new Error("Unauthorized: Bot chưa đăng nhập");
 
     const results = [];
-    const type = targetId.length < 18 ? 1 : 0;
+    // Logic check group (đơn giản hóa)
+    const isGroup = targetId.startsWith("g") || targetId.length > 18;
+    const type = isGroup ? 1 : 0;
 
-    // A. Gửi Ảnh
+    // A. Gửi Ảnh (Ưu tiên Buffer để ổn định)
     if (vocab.media.image_url) {
       try {
         const buffer = await fetchBuffer(vocab.media.image_url);
@@ -121,13 +146,13 @@ export class ZaloStateless {
           attachments: [
             {
               data: buffer,
-              filename: "vocab.jpg",
+              filename: "vocab_image.jpg",
               metadata: { totalSize: buffer.length },
             },
           ],
         };
         await this.api.sendMessage(msg, targetId, type);
-        results.push("Image Sent");
+        results.push("Image Sent (Buffer)");
       } catch (e) {
         console.error("Lỗi gửi ảnh:", e);
         results.push(
@@ -146,20 +171,36 @@ export class ZaloStateless {
       results.push("Text Failed");
     }
 
-    // C. Gửi Voice
+    // C. Gửi Voice (FIXED LOGIC)
+    // Thay vì dùng sendVoice (dễ lỗi với URL ngoài), ta tải về và gửi như File Attachment (.mp3)
     if (vocab.media.voice_url) {
       try {
+        console.log(`[Voice] Sending URL directly: ${vocab.media.voice_url}`);
+
+        // Gọi API sendVoice gốc với URL
         await this.api.sendVoice(
           { voiceUrl: vocab.media.voice_url },
           targetId,
           type,
         );
-        results.push("Voice Sent");
+
+        results.push("Voice Sent (Direct URL)");
       } catch (e) {
-        console.error("Lỗi gửi voice:", e);
-        results.push(
-          `Voice Failed: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        console.error("Lỗi gửi voice (Direct):", e);
+
+        // Fallback: Gửi link trần nếu API sendVoice thất bại
+        try {
+          await this.api.sendMessage(
+            `Link phát âm: ${vocab.media.voice_url}`,
+            targetId,
+            type,
+          );
+          results.push("Voice Sent (Link Fallback)");
+        } catch (err2) {
+          results.push(
+            `Voice Failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
       }
     }
 
