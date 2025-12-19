@@ -1,10 +1,5 @@
 import { Zalo, API } from "zca-js";
-import {
-  ZaloSessionToken,
-  VocabularyItem,
-  formatVocabularyText,
-  ThreadInfo,
-} from "@/lib/types";
+import { ZaloSessionToken, VocabularyItem, ThreadInfo } from "@/lib/types";
 
 // Helper: Tải buffer từ URL
 async function fetchBuffer(url: string): Promise<Buffer> {
@@ -12,6 +7,13 @@ async function fetchBuffer(url: string): Promise<Buffer> {
   if (!response.ok) throw new Error(`Failed to fetch media: ${url}`);
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
+}
+
+// Interface định nghĩa Style cho Zalo Message
+interface ZaloStyle {
+  start: number;
+  len: number;
+  st: string;
 }
 
 export class ZaloStateless {
@@ -161,11 +163,81 @@ export class ZaloStateless {
       }
     }
 
-    // B. Gửi Text
+    // B. Gửi Text (Rich Text Update)
     try {
-      const textContent = formatVocabularyText(vocab);
-      await this.api.sendMessage(textContent, targetId, type);
-      results.push("Text Sent");
+      // 1. Chuẩn bị nội dung Text (Layout mới)
+      // Bỏ tiêu đề cũ, đưa từ vựng lên đầu.
+      const lineWord = `${vocab.word} (${vocab.type})`;
+      const lineIpa = `🔊 ${vocab.ipa}`;
+      const lineMeaning = `💡 Nghĩa: ${vocab.meaning}`;
+      const lineUsage = `ℹ️ Cách dùng: ${vocab.usage}`;
+      const lineExampleHeader = `📝 Ví dụ:`;
+      const lineExampleContent = `"${vocab.example}"`;
+      const lineExampleTrans = `(${vocab.example_meaning || "..."})`;
+
+      let explanationText = "";
+      if (vocab.explanation && vocab.explanation.length > 0) {
+        explanationText =
+          "\n🧩 Từ vựng trong câu:\n" +
+          vocab.explanation
+            .map((ex) => `• ${ex.term} (${ex.type}): ${ex.meaning}`)
+            .join("\n");
+      }
+
+      // Ghép chuỗi
+      const fullMsgText = [
+        lineWord,
+        lineIpa,
+        "", // Dòng trống
+        lineMeaning,
+        lineUsage,
+        "", // Dòng trống
+        lineExampleHeader,
+        lineExampleContent,
+        lineExampleTrans,
+        explanationText,
+      ].join("\n");
+
+      // 2. Tính toán Styles
+      const styles: ZaloStyle[] = [];
+
+      // --- Style 1: Highlight Từ chính (Dòng đầu tiên) ---
+      // Yêu cầu: In đậm (b) + H1 (kích thước lớn nhất)
+      // Vị trí bắt đầu là 0 vì nó nằm đầu tiên
+      const mainWordLen = vocab.word.length;
+      styles.push({ start: 0, len: mainWordLen, st: "b" });
+      styles.push({ start: 0, len: mainWordLen, st: "h1" });
+
+      // --- Style 2: Highlight Từ trong câu Ví dụ ---
+      // Yêu cầu: In nghiêng (i) + In đậm (b)
+      // Tìm vị trí dòng ví dụ trong tổng thể văn bản
+      const exampleStartIndex = fullMsgText.indexOf(lineExampleContent);
+
+      if (exampleStartIndex !== -1) {
+        // Tìm vị trí từ vựng bên trong dòng ví dụ (Case insensitive)
+        const lowerExample = lineExampleContent.toLowerCase();
+        const lowerWord = vocab.word.toLowerCase();
+        const wordInExampleIndex = lowerExample.indexOf(lowerWord);
+
+        if (wordInExampleIndex !== -1) {
+          // Tính index tuyệt đối
+          const absoluteIndex = exampleStartIndex + wordInExampleIndex;
+
+          styles.push({ start: absoluteIndex, len: mainWordLen, st: "b" });
+          styles.push({ start: absoluteIndex, len: mainWordLen, st: "i" });
+        }
+      }
+
+      // 3. Gửi tin nhắn với Styles
+      // zca-js hỗ trợ tham số đầu tiên là object { msg, styles }
+      const messageObject = {
+        msg: fullMsgText,
+        styles: styles,
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await this.api.sendMessage(messageObject as any, targetId, type);
+      results.push("Text Sent (Rich Style)");
     } catch (e) {
       console.error("Lỗi gửi text:", e);
       results.push("Text Failed");
@@ -197,9 +269,8 @@ export class ZaloStateless {
           );
           results.push("Voice Sent (Link Fallback)");
         } catch (err2) {
-          results.push(
-            `Voice Failed: ${e instanceof Error ? e.message : String(e)}`,
-          );
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          results.push(`Voice Failed: ${(e as Error).message}`);
         }
       }
     }

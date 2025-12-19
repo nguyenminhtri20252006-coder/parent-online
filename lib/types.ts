@@ -49,8 +49,7 @@ export function formatVocabularyText(data: VocabularyItem): string {
       .join("\n");
   }
 
-  return `🔥 TỪ MỚI HÔM NAY 🔥
-
+  return `
 ✨ ${data.word} (${data.type})
 🔊 ${data.ipa}
 
